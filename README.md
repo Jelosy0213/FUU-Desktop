@@ -1,10 +1,10 @@
 # 福UU（第三方）
 
-“图片网址”
+![](https://cdn.jsdelivr.net/gh/Jelosy0213/mdImage/img/img1.png)
 
-“图片网址2”
+![](https://cdn.jsdelivr.net/gh/Jelosy0213/mdImage/img/img2.png)
 
-福州大学教务系统第三方桌面客户端（Electron + Vue 3）。非官方应用，仅供学习交流。
+福州大学教务系统第三方桌面客户端（Electron + Vue 3）。
 
 ## 功能特性
 
@@ -80,23 +80,9 @@ npm run lint              # Oxlint + ESLint
 npm run format            # oxfmt 格式化
 ```
 
-## 更新检查配置
-
-进入主页面会自动检查更新（[electron/main.cjs](electron/main.cjs) 中 `UPDATE_MANIFEST_URL`）。配置该地址后，接口需返回：
-
-```json
-{
-  "version": "0.3.0",
-  "downloadUrl": "https://example.com/福UU-安装包.exe",
-  "releaseNotes": "本次更新内容说明"
-}
-```
-
-版本号大于当前版本时弹出更新弹窗，支持下载进度显示。
-
 ## 免责声明
 
-本项目为第三方开源项目，与福州大学官方无关，仅供个人学习与交流使用。请勿用于商业用途，使用过程中请遵守相关法律法规与校方规定。
+本项目为第三方开源项目，与福州大学、west2官方无关，仅供个人学习与交流使用。请勿用于商业用途，使用过程中请遵守相关法律法规与校方规定。
 
 ## 许可证
 
