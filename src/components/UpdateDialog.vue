@@ -42,7 +42,7 @@ const noReminder = ref(false)
         </div>
 
         <div v-else-if="updateState.downloaded" class="download-done">
-          <span>下载完成，安装包已保存至：{{ updateState.downloadPath }}</span>
+          <span>下载完成，正在启动安装程序…</span>
         </div>
 
         <p v-if="updateState.error" class="update-error">{{ updateState.error }}</p>

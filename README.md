@@ -15,7 +15,7 @@
 - **校历**：当前学期及起止日期
 - **记住密码**：基于 Electron `safeStorage` 加密存储，不落明文
 - **窗口记忆**：退出时处于小窗则下次启动直接打开小窗
-- **更新检查**：暂不可用
+- **更新检查**：通过 GitHub Releases 自动检查新版本，支持"不再提示 / 以后再说 / 立即更新（带下载进度）"
 - **开源**：GPL-3.0
 
 ## 项目结构
@@ -79,6 +79,24 @@ npm run test:e2e          # Playwright 端到端测试（首次需 npx playwrigh
 npm run lint              # Oxlint + ESLint
 npm run format            # oxfmt 格式化
 ```
+
+## 更新检查配置
+
+进入主页面会自动检查更新。当前通过 **jsDelivr CDN 上的版本清单**获取最新版本（避免 GitHub API 限流/网络不可达），配置项位于 [electron/main.cjs](electron/main.cjs) 顶部：
+
+- `UPDATE_MANIFEST_URL`：版本清单地址，默认 `https://cdn.jsdelivr.net/gh/Jelosy0213/FUU-Desktop@latest/update.json`
+- `UPDATE_DOWNLOAD_URL_TEMPLATE`：下载地址模板，`{version}` 会被替换为清单中的版本号
+
+**维护方式**：在仓库根目录维护 `update.json`，发布新版时更新其中的版本号（并同步上传对应安装包到 GitHub Releases）：
+
+```json
+{
+  "version": "0.2.3",
+  "releaseNotes": "本次更新内容说明"
+}
+```
+
+下载地址约定：`Setup-<版本号>.exe`（如 `Setup-0.2.3.exe`，上传到 `Win` 标签对应的 Release）。应用会自动比对版本号并提示更新（支持下载进度显示，下载完成后自动启动安装程序并退出）。
 
 ## 免责声明
 

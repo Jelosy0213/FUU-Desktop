@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Jelosy
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
-const { app, BrowserWindow, ipcMain, safeStorage, screen, net, session } = require('electron')
+const { app, BrowserWindow, ipcMain, safeStorage, screen, net, session, shell } = require('electron')
 const http = require('node:http')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -12,47 +12,61 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || ''
 const PROXY_PORT = Number(process.env.FZU_PROXY_PORT || 8788)
 
 // ===== 更新检查配置 =====
-// 更新清单接口地址：应返回 JSON，格式见 fetchUpdateManifest 中的 UpdateManifest。
-// TODO: 更新地址待提供，配置后自动检查更新即可生效
-const UPDATE_MANIFEST_URL = ''
+// 通过 jsDelivr CDN 上的版本清单检查更新（避免 GitHub API 限流/网络不可达）。
+// 需在仓库根目录维护 update.json：{ "version": "0.2.3", "releaseNotes": "更新说明" }
+const UPDATE_MANIFEST_URL = 'https://cdn.jsdelivr.net/gh/Jelosy0213/FUU-Desktop@latest/update.json'
+// 下载地址模板：{version} 会被替换为清单中的版本号
+const UPDATE_DOWNLOAD_URL_TEMPLATE =
+  'https://github.com/Jelosy0213/FUU-Desktop/releases/download/Win/Setup-{version}.exe'
 
-/** @typedef {{ version: string, downloadUrl: string, releaseNotes?: string }} UpdateManifest */
+// 简单语义化版本比较：1 表示 a 更新，-1 表示 b 更新，0 表示相同。
+// 支持预发布后缀（如 0.2.3-Alpha < 0.2.3）
+function parseVersion(v) {
+  const [core, pre] = String(v).split('-')
+  return { nums: core.split('.').map((n) => parseInt(n, 10) || 0), pre: pre || '' }
+}
 
-// 简单语义化版本比较：1 表示 a 更新，-1 表示 b 更新，0 表示相同
 function compareVersions(a, b) {
-  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0)
-  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0)
-  const len = Math.max(pa.length, pb.length)
+  const va = parseVersion(a)
+  const vb = parseVersion(b)
+  const len = Math.max(va.nums.length, vb.nums.length)
   for (let i = 0; i < len; i++) {
-    const x = pa[i] || 0
-    const y = pb[i] || 0
+    const x = va.nums[i] || 0
+    const y = vb.nums[i] || 0
     if (x > y) return 1
     if (x < y) return -1
   }
+  // 核心版本相同：正式版高于预发布版；同为预发布版按后缀字典序比较
+  if (!va.pre && vb.pre) return 1
+  if (va.pre && !vb.pre) return -1
+  if (va.pre && vb.pre) return va.pre < vb.pre ? -1 : va.pre > vb.pre ? 1 : 0
   return 0
 }
 
-// 用 Electron net 拉取更新清单（走系统网络栈，无 CORS 限制）
-async function fetchUpdateManifest(url) {
-  const response = await net.fetch(url, { method: 'GET' })
+// 拉取版本清单（走 Electron net 栈，无 CORS 限制）
+async function fetchUpdateManifest() {
+  const response = await net.fetch(UPDATE_MANIFEST_URL, { method: 'GET' })
   if (!response.ok) throw new Error(`更新服务响应异常（HTTP ${response.status}）`)
-  return /** @type {UpdateManifest} */ (await response.json())
+  return await response.json()
 }
 
-// 检查更新：未配置地址或请求失败时不打扰用户，返回 ok:false 由渲染层决定是否提示
+// 检查更新：清单未配置或请求失败时不打扰用户，返回 ok:false 由渲染层决定是否提示
 ipcMain.handle('update:check', async () => {
   if (!UPDATE_MANIFEST_URL) return { ok: false, hasUpdate: false, error: '更新服务暂未配置' }
   try {
-    const manifest = await fetchUpdateManifest(UPDATE_MANIFEST_URL)
+    const manifest = await fetchUpdateManifest()
+    const version = String(manifest.version || '')
+    const match = /(\d+\.\d+\.\d+)/.exec(version)
+    if (!match) return { ok: false, hasUpdate: false, error: '无法识别清单中的版本号' }
     const current = app.getVersion()
-    const hasUpdate = compareVersions(manifest.version, current) > 0
+    const hasUpdate = compareVersions(match[1], current) > 0
     return {
       ok: true,
       hasUpdate,
       currentVersion: current,
-      version: manifest.version,
-      downloadUrl: manifest.downloadUrl,
-      releaseNotes: manifest.releaseNotes || '',
+      version: match[1],
+      downloadUrl: UPDATE_DOWNLOAD_URL_TEMPLATE.replace('{version}', match[1]),
+      releaseNotes: String(manifest.releaseNotes || ''),
     }
   } catch (error) {
     console.error('[main] 检查更新失败：', error)
@@ -65,6 +79,18 @@ ipcMain.on('update:download', (event, url) => {
   if (!url || typeof url !== 'string') return
   event.sender.downloadURL(url)
 })
+
+// 下载完成：调用系统默认方式启动安装程序（Windows 直接运行 exe，macOS 打开 dmg），
+// 稍作延迟后退出应用，让渲染层有机会显示"下载完成"状态
+function launchInstallerAndQuit(installerPath) {
+  shell.openPath(installerPath).then((error) => {
+    if (error) {
+      console.error('[main] 启动安装程序失败：', error)
+      return
+    }
+    setTimeout(() => app.quit(), 1500)
+  })
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -513,10 +539,13 @@ app.whenReady().then(async () => {
       webContents.send('update:download-progress', { percent })
     })
     item.once('done', (_e, state) => {
+      const savePath = item.getSavePath()
       webContents.send('update:download-done', {
         status: state === 'completed' ? 'completed' : 'failed',
-        path: item.getSavePath(),
+        path: savePath,
       })
+      // 下载完成：自动启动安装程序并退出应用
+      if (state === 'completed') launchInstallerAndQuit(savePath)
     })
   })
 
