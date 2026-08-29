@@ -1,0 +1,225 @@
+@font-face {
+  font-family: 'SegoeIcons';
+  src: url('/fonts/window/SegoeIcons.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'MiSans';
+  src: url('/fonts/MiSans/MiSans-Regular.woff') format('woff');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MiSans';
+  src: url('/fonts/MiSans/MiSans-Medium.woff') format('woff');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MiSans';
+  src: url('/fonts/MiSans/MiSans-Semibold.woff') format('woff');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MiSans';
+  src: url('/fonts/MiSans/MiSans-Semibold.woff') format('woff');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter/InterVariable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --ui-font-sans: 'Inter', 'MiSans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ui-ink: #102033;
+  --ui-ink-strong: #0f2742;
+  --ui-muted: #5b6b7f;
+  --ui-primary: #2563eb;
+  --ui-primary-strong: #1d4ed8;
+  --ui-border: #dbe3ee;
+  --ui-border-soft: rgba(203, 216, 235, 0.9);
+  --ui-surface: rgba(255, 255, 255, 0.86);
+  --ui-surface-solid: #ffffff;
+  --ui-radius-sm: 8px;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 16px;
+  --ui-shadow-panel: 0 24px 60px rgba(30, 64, 110, 0.11), 0 4px 12px rgba(30, 64, 110, 0.05);
+  --ui-shadow-control: 0 5px 14px rgba(30, 64, 110, 0.07);
+  --ui-motion-fast: 0.2s ease;
+  --ui-motion-enter: 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--ui-font-sans);
+  background: #f4f7fb;
+  color: var(--ui-ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* 禁用图片拖动（头像、验证码等不被拖拽/出现拖影） */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 全局禁用文字选择（避免误选中蓝色高亮），输入类元素除外 */
+* {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 链接统一使用默认光标，与桌面应用风格一致 */
+a,
+a:hover {
+  cursor: default;
+}
+
+.ui-page-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.ui-panel {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border-soft);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-panel);
+  backdrop-filter: blur(14px);
+}
+
+.ui-btn {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: transform var(--ui-motion-fast), opacity var(--ui-motion-fast), box-shadow var(--ui-motion-fast), background var(--ui-motion-fast);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ui-ink);
+  box-shadow: var(--ui-shadow-control);
+}
+
+.ui-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: var(--ui-surface-solid);
+  box-shadow: 0 9px 20px rgba(30, 64, 110, 0.12);
+}
+
+.ui-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ui-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.ui-select {
+  min-width: 148px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: var(--ui-radius-sm);
+  padding: 8px 34px 8px 11px;
+  appearance: none;
+  background-color: rgba(255, 255, 255, 0.8);
+  background-image: linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
+  background-repeat: no-repeat;
+  background-size: 5px 5px, 5px 5px;
+  color: var(--ui-ink);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  box-shadow: var(--ui-shadow-control);
+  transition: border-color var(--ui-motion-fast), box-shadow var(--ui-motion-fast), background-color var(--ui-motion-fast);
+}
+
+.ui-select:hover {
+  border-color: rgba(37, 99, 235, 0.5);
+  background-color: var(--ui-surface-solid);
+}
+
+.ui-select:focus-visible {
+  border-color: #60a5fa;
+  outline: 3px solid rgba(96, 165, 250, 0.22);
+  outline-offset: 2px;
+  box-shadow: 0 7px 18px rgba(30, 64, 110, 0.12);
+}
+
+.ui-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ui-focusable:focus-visible,
+.ui-btn:focus-visible {
+  outline: 3px solid rgba(96, 165, 250, 0.35);
+  outline-offset: 2px;
+}
+
+.ui-enter {
+  animation: ui-page-enter var(--ui-motion-enter) both;
+}
+
+.ui-loading {
+  animation: ui-soft-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes ui-page-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ui-soft-pulse {
+  0%, 100% { opacity: 0.62; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-enter,
+  .ui-loading {
+    animation: none;
+  }
+
+  .ui-btn {
+    transition: none;
+  }
+}
