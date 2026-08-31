@@ -9,6 +9,9 @@ import { useAuthStore } from '../stores/auth'
 const auth = useAuthStore()
 const electronAPI = window.electronAPI
 
+// 演示账号：无需真实验证码即可登录，本地代理返回示例数据
+const DEMO_ACCOUNT = '123456'
+
 // 清理旧版本用 localStorage 保存的明文凭据
 localStorage.removeItem('fzu_remember_login')
 
@@ -20,9 +23,15 @@ const captchaLoading = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
 
-const captchaUrl = computed(() => `/api/captcha?t=${captchaVersion.value}`)
+const isDemoAccount = computed(() => auth.username.trim() === DEMO_ACCOUNT)
+const captchaUrl = computed(
+  () => `/api/captcha?t=${captchaVersion.value}&account=${encodeURIComponent(auth.username.trim())}`,
+)
 const canSubmit = computed(
-  () => auth.username.trim().length > 0 && password.value.length > 0 && verifyCode.value.trim().length > 0,
+  () =>
+    auth.username.trim().length > 0 &&
+    password.value.length > 0 &&
+    (isDemoAccount.value || verifyCode.value.trim().length > 0),
 )
 
 function refreshCaptcha() {

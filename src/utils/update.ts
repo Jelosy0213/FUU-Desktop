@@ -63,7 +63,15 @@ export async function checkForUpdate(manual = false) {
       return
     }
     if (!result.hasUpdate || !result.version || !result.downloadUrl) {
-      if (manual) auth.showToast('已是最新版本', 'success')
+      if (manual) {
+        // 已是最新：明确给出当前与线上版本号，避免"点检查更新没反应"的困惑
+        auth.showToast(
+          result.version
+            ? `已是最新版本（当前 v${result.currentVersion || '?'} / 线上 v${result.version}）`
+            : '已是最新版本',
+          'success',
+        )
+      }
       return
     }
     if (!manual && isDismissed(result.version)) return

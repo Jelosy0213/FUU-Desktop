@@ -316,7 +316,9 @@ export const useAuthStore = defineStore('auth', () => {
   // 获取当前教学周（week.asp 代理），失败不阻塞课表加载
   async function fetchCurrentWeek() {
     try {
-      const response = await fetch('/api/locate-date')
+      const response = await fetch(
+        `/api/locate-date?account=${encodeURIComponent(username.value)}`,
+      )
       const result = await response.json()
       if (response.ok && result.success) {
         currentWeek.value = result.week
@@ -339,7 +341,9 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
     try {
-      const response = await fetch('/api/school-calendar')
+      const response = await fetch(
+        `/api/school-calendar?account=${encodeURIComponent(username.value)}`,
+      )
       const result = await response.json()
       if (response.ok && result.success) {
         const data = { currentTerm: result.currentTerm, terms: result.terms }

@@ -6,6 +6,19 @@ import crypto from 'node:crypto'
 import http from 'node:http'
 import https from 'node:https'
 import { parseCourseTable } from './course-parser.mjs'
+import {
+  DEMO_ACCOUNT,
+  DEMO_PASSWORD,
+  DEMO_TERM,
+  DEMO_TERMS,
+  demoCalendar,
+  demoCaptchaSvg,
+  demoCourses,
+  demoExams,
+  demoLocateDate,
+  demoPeriods,
+  demoProfile,
+} from './demo-data.mjs'
 
 const PORT = Number(process.env.FZU_PROXY_PORT || 8788)
 const TARGET_ORIGIN = 'https://jwcjwxt2.fzu.edu.cn:82'
@@ -23,6 +36,9 @@ const PROFILE_URL = `${COURSE_ORIGIN}${PROFILE_PATH}`
 const LOCATE_DATE_URL = `${TARGET_ORIGIN}/week.asp`
 // 教务处"校历"接口：返回当前学期 + 各学期起止日期
 const SCHOOL_CALENDAR_URL = `${TARGET_ORIGIN}/xl.asp`
+// 更新清单默认地址（与 electron/main.cjs 保持一致；主进程会显式传入 url，这里仅作兜底）
+const UPDATE_MANIFEST_URL =
+  process.env.FZU_UPDATE_MANIFEST_URL || 'https://cdn.jsdelivr.net/gh/Jelosy0213/FUU-Desktop@latest/update.json'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
 const sessions = new Map()
@@ -34,9 +50,24 @@ function sessionId() {
 function getSession(req, res) {
   const incoming = req.headers.cookie?.match(/(?:^|; )fzu_proxy_session=([^;]+)/)?.[1]
   const id = incoming && sessions.has(incoming) ? incoming : sessionId()
-  if (!sessions.has(id)) sessions.set(id, { cookies: new Map(), initialized: false, courseId: '' })
+  if (!sessions.has(id)) sessions.set(id, { cookies: new Map(), initialized: false, courseId: '', demo: false })
   res.setHeader('Set-Cookie', `fzu_proxy_session=${id}; Path=/; HttpOnly; SameSite=Lax`)
   return sessions.get(id)
+}
+
+// 解析查询参数（account 等），失败返回空对象
+function parseQuery(url) {
+  try {
+    return Object.fromEntries(new URL(url, 'http://localhost').searchParams)
+  } catch {
+    return {}
+  }
+}
+
+// 是否演示账号：数据接口以请求携带的 account 为准（会话标记兜底），
+// 这样应用重启后代理内存会话清空时，演示数据仍可直接返回，无需网络
+function isDemoSession(session, account) {
+  return Boolean(session.demo) || (account !== undefined && account === DEMO_ACCOUNT)
 }
 
 function requestTarget(path, options = {}) {
@@ -57,6 +88,7 @@ function requestTarget(path, options = {}) {
           ...options.headers,
         },
         rejectUnauthorized: true,
+        timeout: options.timeout || 0,
       },
       (response) => {
         const chunks = []
@@ -71,6 +103,9 @@ function requestTarget(path, options = {}) {
       },
     )
     request.on('error', reject)
+    request.on('timeout', () => {
+      request.destroy(new Error(`请求超时（${(options.timeout || 0) / 1000} 秒）`))
+    })
     if (options.body) request.write(options.body)
     request.end()
   })
@@ -437,6 +472,13 @@ const server = http.createServer(async (req, res) => {
   const session = getSession(req, res)
   try {
     if (req.method === 'GET' && req.url?.startsWith('/api/captcha')) {
+      const { account } = parseQuery(req.url)
+      if (account === DEMO_ACCOUNT) {
+        // 演示账号：无需真实验证码，直接返回占位图
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' })
+        res.end(demoCaptchaSvg())
+        return
+      }
       await ensureSessionInitialized(session)
       logStep('captcha:start', { cookieNames: cookieNames(session) })
       const result = await requestTarget(`/plus/verifycode.asp?n=${Math.random()}`, {
@@ -465,8 +507,15 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && req.url === '/api/login') {
-      await ensureSessionInitialized(session)
       const input = JSON.parse(await readBody(req))
+      // 演示账号：密码匹配即登录成功，无需真实教务会话与验证码
+      if (input.username?.trim() === DEMO_ACCOUNT && input.password === DEMO_PASSWORD) {
+        session.demo = true
+        logStep('demo:login', { username: input.username })
+        sendJson(res, 200, { success: true, message: '登录成功（演示数据）' })
+        return
+      }
+      await ensureSessionInitialized(session)
       if (!input.username || !input.password || !input.verifyCode) {
         sendJson(res, 400, { success: false, message: '请填写账号、密码和验证码' })
         return
@@ -527,6 +576,22 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/course-page') {
       const input = JSON.parse(await readBody(req) || '{}')
       const account = String(input.account || '').trim()
+      if (isDemoSession(session, account)) {
+        const requestedTerm = String(input.term || '').trim() || DEMO_TERM
+        logStep('demo:course-page', { account, term: requestedTerm })
+        sendJson(res, 200, {
+          success: true,
+          message: '课表获取成功（演示数据）',
+          title: '我的课表（演示）',
+          semester: requestedTerm,
+          terms: DEMO_TERMS,
+          periods: demoPeriods(),
+          courses: demoCourses(requestedTerm),
+          snippet: '',
+          htmlLength: 0,
+        })
+        return
+      }
       const homeId = session.homeId || account
       const targetUrl = input.url || (homeId ? `${COURSE_ORIGIN}${COURSE_PATH}?id=${encodeURIComponent(homeId)}` : DEFAULT_COURSE_URL)
       let parsedTarget
@@ -638,6 +703,17 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/profile') {
       const input = JSON.parse(await readBody(req) || '{}')
       const account = String(input.account || '').trim()
+      if (isDemoSession(session, account)) {
+        logStep('demo:profile', { account })
+        sendJson(res, 200, {
+          success: true,
+          message: '个人信息获取成功（演示数据）',
+          profile: demoProfile(),
+          snippet: '',
+          htmlLength: 0,
+        })
+        return
+      }
       const homeId = session.homeId || account
       const targetUrl = homeId ? `${COURSE_ORIGIN}${PROFILE_PATH}?id=${encodeURIComponent(homeId)}` : PROFILE_URL
       await ensureCourseSessionInitialized(session)
@@ -680,6 +756,19 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url === '/api/exam-list') {
       const input = JSON.parse(await readBody(req) || '{}')
       const account = String(input.account || '').trim()
+      if (isDemoSession(session, account)) {
+        const requestedTerm = String(input.term || '').trim() || DEMO_TERM
+        logStep('demo:exam-list', { account, term: requestedTerm })
+        sendJson(res, 200, {
+          success: true,
+          message: '考试信息获取成功（演示数据）',
+          title: '我的考表（演示）',
+          exams: demoExams(requestedTerm),
+          snippet: '',
+          htmlLength: 0,
+        })
+        return
+      }
       const homeId = session.homeId || account
       const targetUrl = input.url || (homeId ? `${COURSE_ORIGIN}${EXAM_PATH}?id=${encodeURIComponent(homeId)}` : EXAM_URL)
       await ensureCourseSessionInitialized(session)
@@ -776,7 +865,21 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    if (req.method === 'GET' && req.url === '/api/locate-date') {
+    if (req.method === 'GET' && req.url?.startsWith('/api/locate-date')) {
+      const { account } = parseQuery(req.url)
+      if (isDemoSession(session, account)) {
+        const located = demoLocateDate()
+        logStep('demo:locate-date', { account, located })
+        sendJson(res, 200, {
+          success: true,
+          message: '当前周数获取成功（演示数据）',
+          week: located.week,
+          year: located.year,
+          term: located.term,
+          semester: located.semester,
+        })
+        return
+      }
       await ensureSessionInitialized(session)
       logStep('locate-date:start', { cookieNames: cookieNames(session) })
       const result = await requestTarget(LOCATE_DATE_URL, {
@@ -810,7 +913,19 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    if (req.method === 'GET' && req.url === '/api/school-calendar') {
+    if (req.method === 'GET' && req.url?.startsWith('/api/school-calendar')) {
+      const { account } = parseQuery(req.url)
+      if (isDemoSession(session, account)) {
+        const calendar = demoCalendar()
+        logStep('demo:school-calendar', { account, currentTerm: calendar.currentTerm })
+        sendJson(res, 200, {
+          success: true,
+          message: '校历获取成功（演示数据）',
+          currentTerm: calendar.currentTerm,
+          terms: calendar.terms,
+        })
+        return
+      }
       await ensureSessionInitialized(session)
       logStep('school-calendar:start', { cookieNames: cookieNames(session) })
       const result = await requestTarget(SCHOOL_CALENDAR_URL, {
@@ -838,6 +953,62 @@ const server = http.createServer(async (req, res) => {
         message: '校历获取成功',
         currentTerm: calendar.currentTerm,
         terms: calendar.terms,
+      })
+      return
+    }
+
+    // 更新清单：主进程经本地代理拉取远程清单，代理侧输出请求状态/响应/解析结果的详细日志，
+    // 便于排查"检查更新没反应/总提示已最新"等问题（可选 url 参数覆盖清单地址，便于测试）
+    if (req.method === 'GET' && req.url?.startsWith('/api/update-manifest')) {
+      const { url: requestedUrl } = parseQuery(req.url)
+      const manifestUrl = requestedUrl || UPDATE_MANIFEST_URL
+      logStep('update-manifest:start', { url: manifestUrl })
+      let result
+      try {
+        result = await requestTarget(manifestUrl, {
+          accept: 'application/json, text/plain, */*',
+          timeout: 15000,
+        })
+      } catch (error) {
+        logStep('update-manifest:error', {
+          message: error instanceof Error ? error.message : '请求失败',
+          code: error instanceof Error ? error.code : undefined,
+          cause: error instanceof Error && error.cause ? String(error.cause) : undefined,
+          url: manifestUrl,
+        })
+        sendJson(res, 502, {
+          success: false,
+          message: error instanceof Error ? error.message : '更新清单请求失败',
+          url: manifestUrl,
+          code: error instanceof Error ? error.code : undefined,
+        })
+        return
+      }
+      const text = result.body.toString('utf8')
+      let parsed = null
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        parsed = null
+      }
+      const ok = result.status >= 200 && result.status < 300 && parsed && typeof parsed.version === 'string'
+      logStep('update-manifest:done', {
+        status: result.status,
+        contentType: result.headers['content-type'],
+        location: result.headers.location || undefined,
+        bodyBytes: result.body.length,
+        snippet: text.replace(/\s+/g, ' ').slice(0, 300),
+        version: parsed?.version || '',
+        hasReleaseNotes: Boolean(parsed?.releaseNotes),
+      })
+      sendJson(res, ok ? 200 : 502, {
+        success: ok,
+        message: ok ? '更新清单获取成功' : '更新清单获取失败或格式异常',
+        url: manifestUrl,
+        status: result.status,
+        version: parsed?.version || '',
+        releaseNotes: parsed?.releaseNotes || '',
+        raw: text.slice(0, 2000),
       })
       return
     }

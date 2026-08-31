@@ -13,11 +13,11 @@ const PROXY_PORT = Number(process.env.FZU_PROXY_PORT || 8788)
 
 // ===== 更新检查配置 =====
 // 通过 jsDelivr CDN 上的版本清单检查更新（避免 GitHub API 限流/网络不可达）。
-// 需在仓库根目录维护 update.json：{ "version": "0.2.3", "releaseNotes": "更新说明" }
+// 需在仓库根目录维护 update.json：{ "version": "0.2.5", "releaseNotes": "更新说明" }
 const UPDATE_MANIFEST_URL = 'https://cdn.jsdelivr.net/gh/Jelosy0213/FUU-Desktop@latest/update.json'
-// 下载地址模板：{version} 会被替换为清单中的版本号
+// 下载地址模板：{version} 会被替换为清单中的版本号（发布时资源统一命名为 Setup.exe）
 const UPDATE_DOWNLOAD_URL_TEMPLATE =
-  'https://github.com/Jelosy0213/FUU-Desktop/releases/download/Win/Setup-{version}.exe'
+  'https://github.com/Jelosy0213/FUU-Desktop/releases/download/{version}/Setup-{version}.exe'
 
 // 简单语义化版本比较：1 表示 a 更新，-1 表示 b 更新，0 表示相同。
 // 支持预发布后缀（如 0.2.3-Alpha < 0.2.3）
@@ -43,8 +43,22 @@ function compareVersions(a, b) {
   return 0
 }
 
-// 拉取版本清单（走 Electron net 栈，无 CORS 限制）
+// 拉取版本清单：优先经本地代理（代理侧会输出请求/响应/解析的详细日志，便于排查），
+// 代理不可用或返回异常时回退直连 CDN。
 async function fetchUpdateManifest() {
+  const proxyUrl = `http://127.0.0.1:${PROXY_PORT}/api/update-manifest?url=${encodeURIComponent(UPDATE_MANIFEST_URL)}`
+  try {
+    const proxyResponse = await net.fetch(proxyUrl, { method: 'GET' })
+    const payload = await proxyResponse.json()
+    if (proxyResponse.ok && payload.success && payload.version) {
+      console.log(`[main] 更新清单获取成功（经本地代理）version=${payload.version}`)
+      return { version: payload.version, releaseNotes: payload.releaseNotes || '' }
+    }
+    console.warn('[main] 本地代理返回的更新清单异常：', JSON.stringify(payload).slice(0, 500))
+  } catch (error) {
+    console.warn('[main] 本地代理更新清单请求失败，回退直连：', error instanceof Error ? error.message : error)
+  }
+  console.log(`[main] 直连更新清单：${UPDATE_MANIFEST_URL}`)
   const response = await net.fetch(UPDATE_MANIFEST_URL, { method: 'GET' })
   if (!response.ok) throw new Error(`更新服务响应异常（HTTP ${response.status}）`)
   return await response.json()
@@ -57,9 +71,15 @@ ipcMain.handle('update:check', async () => {
     const manifest = await fetchUpdateManifest()
     const version = String(manifest.version || '')
     const match = /(\d+\.\d+\.\d+)/.exec(version)
-    if (!match) return { ok: false, hasUpdate: false, error: '无法识别清单中的版本号' }
+    if (!match) {
+      console.warn('[main] 无法识别清单中的版本号：', version)
+      return { ok: false, hasUpdate: false, error: '无法识别清单中的版本号' }
+    }
     const current = app.getVersion()
     const hasUpdate = compareVersions(match[1], current) > 0
+    console.log(
+      `[main] 更新检查：当前 v${current}，线上 v${match[1]}，${hasUpdate ? '发现新版本，可下载更新' : '已是最新版本'}`,
+    )
     return {
       ok: true,
       hasUpdate,
