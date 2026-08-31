@@ -12,11 +12,9 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || ''
 const PROXY_PORT = Number(process.env.FZU_PROXY_PORT || 8788)
 
 // ===== 更新检查配置 =====
-// 通过 jsDelivr CDN 上的版本清单检查更新（避免 GitHub API 限流/网络不可达）。
-// 注意：清单地址必须写显式分支名（@develop），不能用 @latest——
-// jsDelivr 对 @latest 的"版本解析结果"有约 12 小时缓存，push 后不会立即生效。
-// 需在仓库根目录维护 update.json：{ "version": "0.2.5", "releaseNotes": "更新说明" }
-const UPDATE_MANIFEST_URL = 'https://cdn.jsdelivr.net/gh/Jelosy0213/FUU-Desktop@develop/update.json'
+// 通过 GitHub 上的版本清单文件检查更新（不使用 jsDelivr CDN）。
+// 需在仓库根目录维护 update.json：{ "version": "0.2.6", "releaseNotes": "更新说明" }
+const UPDATE_MANIFEST_URL = 'https://raw.githubusercontent.com/Jelosy0213/FUU-Desktop/develop/update.json'
 // 下载地址模板：{version} 会被替换为清单中的版本号（发布时资源统一命名为 Setup.exe）
 const UPDATE_DOWNLOAD_URL_TEMPLATE =
   'https://github.com/Jelosy0213/FUU-Desktop/releases/download/{version}/Setup-{version}.exe'

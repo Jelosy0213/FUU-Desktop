@@ -37,9 +37,8 @@ const LOCATE_DATE_URL = `${TARGET_ORIGIN}/week.asp`
 // 教务处"校历"接口：返回当前学期 + 各学期起止日期
 const SCHOOL_CALENDAR_URL = `${TARGET_ORIGIN}/xl.asp`
 // 更新清单默认地址（与 electron/main.cjs 保持一致；主进程会显式传入 url，这里仅作兜底）
-// 注意：用显式分支名 @develop，不能用 @latest（jsDelivr 会缓存 @latest 的解析结果约 12 小时）
 const UPDATE_MANIFEST_URL =
-  process.env.FZU_UPDATE_MANIFEST_URL || 'https://cdn.jsdelivr.net/gh/Jelosy0213/FUU-Desktop@develop/update.json'
+  process.env.FZU_UPDATE_MANIFEST_URL || 'https://raw.githubusercontent.com/Jelosy0213/FUU-Desktop/develop/update.json'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
 const sessions = new Map()
