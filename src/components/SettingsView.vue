@@ -7,7 +7,7 @@ import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../stores/auth'
 import appIcon from '../assets/icon.png'
-import { version as appVersion } from '../../package.json'
+import { version as appVersion } from '../../update.json'
 import { checkForUpdate, updateState } from '../utils/update'
 
 type SettingsSection = 'display' | 'system' | 'about'

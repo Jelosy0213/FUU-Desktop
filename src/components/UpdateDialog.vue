@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import appIcon from '../assets/icon.png'
-import { version as appVersion } from '../../package.json'
+import { version as appVersion } from '../../update.json'
 import { updateState, closeUpdate, startDownload } from '../utils/update'
 
 const noReminder = ref(false)

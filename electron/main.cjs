@@ -13,8 +13,10 @@ const PROXY_PORT = Number(process.env.FZU_PROXY_PORT || 8788)
 
 // ===== 更新检查配置 =====
 // 通过 jsDelivr CDN 上的版本清单检查更新（避免 GitHub API 限流/网络不可达）。
+// 注意：清单地址必须写显式分支名（@develop），不能用 @latest——
+// jsDelivr 对 @latest 的"版本解析结果"有约 12 小时缓存，push 后不会立即生效。
 // 需在仓库根目录维护 update.json：{ "version": "0.2.5", "releaseNotes": "更新说明" }
-const UPDATE_MANIFEST_URL = 'https://cdn.jsdelivr.net/gh/Jelosy0213/FUU-Desktop@latest/update.json'
+const UPDATE_MANIFEST_URL = 'https://cdn.jsdelivr.net/gh/Jelosy0213/FUU-Desktop@develop/update.json'
 // 下载地址模板：{version} 会被替换为清单中的版本号（发布时资源统一命名为 Setup.exe）
 const UPDATE_DOWNLOAD_URL_TEMPLATE =
   'https://github.com/Jelosy0213/FUU-Desktop/releases/download/{version}/Setup-{version}.exe'
@@ -41,6 +43,21 @@ function compareVersions(a, b) {
   if (va.pre && !vb.pre) return -1
   if (va.pre && vb.pre) return va.pre < vb.pre ? -1 : va.pre > vb.pre ? 1 : 0
   return 0
+}
+
+// 应用当前版本号以仓库根目录的 update.json 为唯一数据源（发布时只需改这一个文件）：
+// 设置页显示、更新弹窗、更新检查的"当前版本"都读它；打包时该文件随 asar 一起发布
+// （见 package.json build.files 的 update.json 条目）。读取失败时回退 app.getVersion()。
+function readLocalAppVersion() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(__dirname, '../update.json'), 'utf8'))
+    const match = /(\d+\.\d+\.\d+)/.exec(String(parsed.version || ''))
+    if (match) return match[1]
+    console.warn('[main] 本地 update.json 缺少有效版本号，回退 app.getVersion()')
+  } catch (error) {
+    console.warn('[main] 读取本地 update.json 失败，回退 app.getVersion()：', error instanceof Error ? error.message : error)
+  }
+  return app.getVersion()
 }
 
 // 拉取版本清单：优先经本地代理（代理侧会输出请求/响应/解析的详细日志，便于排查），
@@ -75,7 +92,7 @@ ipcMain.handle('update:check', async () => {
       console.warn('[main] 无法识别清单中的版本号：', version)
       return { ok: false, hasUpdate: false, error: '无法识别清单中的版本号' }
     }
-    const current = app.getVersion()
+    const current = readLocalAppVersion()
     const hasUpdate = compareVersions(match[1], current) > 0
     console.log(
       `[main] 更新检查：当前 v${current}，线上 v${match[1]}，${hasUpdate ? '发现新版本，可下载更新' : '已是最新版本'}`,

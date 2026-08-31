@@ -1,6 +1,6 @@
 {
   "name": "testfzu-pc",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "福UU(第三方)",
   "author": "Jelosy",
   "license": "GPL-3.0-or-later",
@@ -83,6 +83,7 @@
       "dist/**/*",
       "electron/**/*",
       "server/**/*",
+      "update.json",
       "!node_modules/**/*"
     ],
     "win": {
