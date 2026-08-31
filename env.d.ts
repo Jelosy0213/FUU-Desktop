@@ -33,7 +33,7 @@ declare global {
       checkForUpdate: () => Promise<UpdateCheckResult>
       downloadUpdate: (url: string) => void
       onUpdateProgress: (callback: (data: { percent: number }) => void) => void
-      onUpdateDone: (callback: (data: { status: 'completed' | 'failed'; path: string }) => void) => void
+      onUpdateDone: (callback: (data: { status: 'completed' | 'failed'; reason?: string; path: string }) => void) => void
     }
   }
 }

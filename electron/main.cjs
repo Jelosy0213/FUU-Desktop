@@ -4,6 +4,7 @@
  */
 const { app, BrowserWindow, ipcMain, safeStorage, screen, net, session, shell } = require('electron')
 const http = require('node:http')
+const tcp = require('node:net')
 const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
@@ -100,7 +101,8 @@ ipcMain.handle('update:check', async () => {
       hasUpdate,
       currentVersion: current,
       version: match[1],
-      downloadUrl: UPDATE_DOWNLOAD_URL_TEMPLATE.replace('{version}', match[1]),
+      // 模板里 {version} 出现多次（tag 路径 + 文件名），必须全部替换
+      downloadUrl: UPDATE_DOWNLOAD_URL_TEMPLATE.replaceAll('{version}', match[1]),
       releaseNotes: String(manifest.releaseNotes || ''),
     }
   } catch (error) {
@@ -112,6 +114,7 @@ ipcMain.handle('update:check', async () => {
 // 开始下载更新包：由发起方窗口的 session 触发 will-download，进度/完成事件回传该窗口
 ipcMain.on('update:download', (event, url) => {
   if (!url || typeof url !== 'string') return
+  console.log(`[main] 收到更新下载请求：${url}`)
   event.sender.downloadURL(url)
 })
 
@@ -146,6 +149,86 @@ const MIME_TYPES = {
   '.otf': 'font/otf',
   '.wasm': 'application/wasm',
   '.txt': 'text/plain; charset=utf-8',
+}
+
+// ===== Electron 会话代理配置 =====
+// 有 Clash 类本地代理（通常通过 HTTPS_PROXY/HTTP_PROXY 环境变量暴露）时，让 Electron 会话
+// 显式走该代理，更新下载/外网访问更稳定；没配置或连不上则退回系统设置，不影响无代理的电脑。
+const PROXY_ENV_KEYS = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy']
+
+function findEnvProxy() {
+  for (const key of PROXY_ENV_KEYS) {
+    const value = (process.env[key] || '').trim()
+    if (value) return value
+  }
+  return ''
+}
+
+// 代理规则统一为 host:port 形式（Chromium 不接受带 scheme 的 proxyRules）
+function normalizeProxyRule(value) {
+  try {
+    const url = new URL(value)
+    return `${url.hostname}:${url.port || (url.protocol === 'https:' ? 443 : 80)}`
+  } catch {
+    return value
+  }
+}
+
+// 探测代理地址是否可达（1.5 秒超时 TCP 连接，避免启动被卡住）
+function probeProxy(url) {
+  return new Promise((resolve) => {
+    let host = ''
+    let port = 0
+    try {
+      const parsed = new URL(url)
+      host = parsed.hostname
+      port = Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80))
+    } catch {
+      resolve(false)
+      return
+    }
+    if (!host || !port) {
+      resolve(false)
+      return
+    }
+    const socket = tcp.connect({ host, port })
+    const timer = setTimeout(() => {
+      socket.destroy()
+      resolve(false)
+    }, 1500)
+    socket.once('connect', () => {
+      clearTimeout(timer)
+      socket.destroy()
+      resolve(true)
+    })
+    socket.once('error', () => {
+      clearTimeout(timer)
+      resolve(false)
+    })
+  })
+}
+
+// 应用会话代理：环境变量代理可达才启用；否则退回系统代理设置（等价于默认行为）
+async function applySessionProxy() {
+  try {
+    const envProxy = findEnvProxy()
+    if (envProxy && (await probeProxy(envProxy))) {
+      await session.defaultSession.setProxy({
+        mode: 'fixed_servers',
+        proxyRules: normalizeProxyRule(envProxy),
+        // 本地地址（本地代理/应用服务/本机）不走代理，避免应用自身连不上
+        proxyBypassRules: '<local>;127.0.0.1;localhost;::1',
+      })
+      console.log(`[main] Electron 会话已启用代理：${normalizeProxyRule(envProxy)}`)
+      return
+    }
+    if (envProxy) {
+      console.warn(`[main] 检测到代理环境变量但不可达（${envProxy}），退回系统代理设置`)
+    }
+    await session.defaultSession.setProxy({ mode: 'system' })
+  } catch (error) {
+    console.error('[main] 配置会话代理失败：', error)
+  }
 }
 
 // 启动本地代理服务：fzu-proxy.mjs 在模块加载时即开始监听 PROXY_PORT。
@@ -560,14 +643,22 @@ ipcMain.on('window:open-forgot', openForgotWindow)
 ipcMain.on('window:show-login', showLoginWindow)
 
 app.whenReady().then(async () => {
+  await applySessionProxy()
   await startProxy()
 
   // 更新包下载：保存到系统"下载"目录，向发起窗口回传下载进度与完成状态
+  // 注意：下载走 Chromium 下载栈直连（不经过本地代理），失败原因通过控制台日志排查
   session.defaultSession.on('will-download', (event, item, webContents) => {
     const filename = item.getFilename() || 'fzu-update'
     item.setSavePath(path.join(app.getPath('downloads'), filename))
+    console.log(`[main] 下载开始：${item.getURL()} -> ${item.getSavePath()}`)
     item.on('updated', (_e, state) => {
-      if (state === 'interrupted') return
+      if (state === 'interrupted') {
+        console.warn(
+          `[main] 下载中断：${item.getURL()} 已接收 ${item.getReceivedBytes()}/${item.getTotalBytes() || '未知'} 字节`,
+        )
+        return
+      }
       const total = item.getTotalBytes()
       const received = item.getReceivedBytes()
       const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0
@@ -575,8 +666,12 @@ app.whenReady().then(async () => {
     })
     item.once('done', (_e, state) => {
       const savePath = item.getSavePath()
+      console.log(
+        `[main] 下载结束：state=${state} url=${item.getURL()} bytes=${item.getReceivedBytes()}/${item.getTotalBytes() || '未知'} path=${savePath}`,
+      )
       webContents.send('update:download-done', {
         status: state === 'completed' ? 'completed' : 'failed',
+        reason: state,
         path: savePath,
       })
       // 下载完成：自动启动安装程序并退出应用

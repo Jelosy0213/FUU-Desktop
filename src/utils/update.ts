@@ -123,14 +123,14 @@ if (typeof window !== 'undefined' && window.electronAPI) {
   window.electronAPI.onUpdateProgress(({ percent }) => {
     updateState.progress = percent
   })
-  window.electronAPI.onUpdateDone(({ status, path }) => {
+  window.electronAPI.onUpdateDone(({ status, path, reason }) => {
     updateState.downloading = false
     if (status === 'completed') {
       updateState.downloaded = true
       updateState.downloadPath = path || ''
       updateState.progress = 100
     } else {
-      updateState.error = '下载失败，请重试'
+      updateState.error = reason === 'interrupted' ? '下载中断，请检查网络后重试' : '下载失败，请重试'
     }
   })
 }
