@@ -9,6 +9,7 @@ import type { CourseItem, CoursePeriod, CourseResult, ExamItem, ExamResult, Scho
 import { useAuthStore } from '../stores/auth'
 import SettingsView from './SettingsView.vue'
 import ProfileView from './ProfileView.vue'
+import CourseCustomDialog from './CourseCustomDialog.vue'
 import avatarImg from '../image/avatar.jpg'
 
 const props = defineProps<{
@@ -87,11 +88,13 @@ function handleDocumentKeydown(event: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', handleDocumentPointerDown)
   document.addEventListener('keydown', handleDocumentKeydown)
+  window.addEventListener('mouseup', handleWindowMouseUp)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', handleDocumentPointerDown)
   document.removeEventListener('keydown', handleDocumentKeydown)
+  window.removeEventListener('mouseup', handleWindowMouseUp)
   if (wheelTimer) clearTimeout(wheelTimer)
 })
 
@@ -512,6 +515,95 @@ function hideTooltip() {
   hoveredCourse.value = null
   hoveredExam.value = null
 }
+
+// ===== 课表格子交互：悬停阴影 + 拖拽框选（仅在"编辑"模式可用） =====
+type GridCell = { day: number; period: number }
+type GridRect = { dayStart: number; dayEnd: number; periodStart: number; periodEnd: number }
+
+const scheduleMode = ref<'view' | 'edit'>('view')
+const isEditMode = computed(() => scheduleMode.value === 'edit')
+
+const hoverCell = ref<GridCell | null>(null)
+const dragStart = ref<GridCell | null>(null)
+const dragCurrent = ref<GridCell | null>(null)
+const selection = ref<GridRect | null>(null)
+
+const showCustomDialog = ref(false)
+const dialogPos = ref({ x: 0, y: 0 })
+
+// 切回"查看"模式时清理选中区域与弹窗，让格子恢复原样
+watch(scheduleMode, (mode) => {
+  if (mode !== 'edit') closeCustomDialog()
+})
+
+function normalizeRect(a: GridCell, b: GridCell): GridRect {
+  return {
+    dayStart: Math.min(a.day, b.day),
+    dayEnd: Math.max(a.day, b.day),
+    periodStart: Math.min(a.period, b.period),
+    periodEnd: Math.max(a.period, b.period),
+  }
+}
+
+// 拖拽中实时展示框选范围；未拖拽时展示已选中的区域
+const activeRect = computed<GridRect | null>(() => {
+  if (dragStart.value && dragCurrent.value) return normalizeRect(dragStart.value, dragCurrent.value)
+  return selection.value
+})
+
+function isCellHovered(day: number, period: number) {
+  if (!isEditMode.value) return false
+  return hoverCell.value?.day === day && hoverCell.value?.period === period
+}
+
+function isCellSelected(day: number, period: number) {
+  if (!isEditMode.value) return false
+  const rect = activeRect.value
+  if (!rect) return false
+  return day >= rect.dayStart && day <= rect.dayEnd && period >= rect.periodStart && period <= rect.periodEnd
+}
+
+function onCellEnter(day: number, period: number) {
+  if (!isEditMode.value) return
+  if (dragStart.value) {
+    dragCurrent.value = { day, period }
+    hoverCell.value = null
+  } else {
+    hoverCell.value = { day, period }
+  }
+}
+
+function onCellLeave() {
+  if (!dragStart.value) hoverCell.value = null
+}
+
+function onCellPointerDown(day: number, period: number, event: MouseEvent) {
+  if (!isEditMode.value) return
+  event.preventDefault()
+  dragStart.value = { day, period }
+  dragCurrent.value = { day, period }
+  selection.value = null
+  hoverCell.value = null
+}
+
+function handleWindowMouseUp(event: MouseEvent) {
+  if (!dragStart.value) return
+  if (dragCurrent.value) {
+    selection.value = normalizeRect(dragStart.value, dragCurrent.value)
+  }
+  dragStart.value = null
+  dragCurrent.value = null
+  if (selection.value) {
+    dialogPos.value = { x: event.clientX, y: event.clientY }
+    showCustomDialog.value = true
+  }
+}
+
+// 关闭自定义弹窗：清除选区阴影，让格子恢复原样
+function closeCustomDialog() {
+  showCustomDialog.value = false
+  selection.value = null
+}
 </script>
 
 <template>
@@ -579,6 +671,24 @@ function hideTooltip() {
         >
         <Teleport to="#schedule-toolbar-slot">
           <div v-if="displayWeek !== null" class="schedule-toolbar">
+            <div v-if="!compact" class="mode-switch" :class="{ 'mode-edit': scheduleMode === 'edit' }" role="group" aria-label="课表模式">
+              <span class="mode-indicator" aria-hidden="true"></span>
+              <button
+                type="button"
+                class="mode-btn"
+                :class="{ active: scheduleMode === 'view' }"
+                :aria-pressed="scheduleMode === 'view'"
+                @click="scheduleMode = 'view'"
+              >查看</button>
+              <button
+                type="button"
+                class="mode-btn"
+                :class="{ active: scheduleMode === 'edit' }"
+                :aria-pressed="scheduleMode === 'edit'"
+                @click="scheduleMode = 'edit'"
+              >编辑</button>
+            </div>
+
             <div v-if="termOptions.length && !compact" ref="termMenuRef" class="term-select">
               <button
                 class="term-select-trigger"
@@ -662,8 +772,17 @@ function hideTooltip() {
               v-for="d in 7"
               :key="`cell-${period.number}-${d}`"
               class="grid-cell"
-              :class="{ 'grid-cell-today': isTodayColumn(d - 1) }"
+              :class="{
+                'grid-cell-today': isTodayColumn(d - 1),
+                'cell-hovered': isCellHovered(d, period.number),
+                'cell-selected': isCellSelected(d, period.number),
+              }"
+              :data-day="d"
+              :data-period="period.number"
               :style="{ gridColumn: `${d + 1}`, gridRow: `${period.number + 1}` }"
+              @mouseenter="onCellEnter(d, period.number)"
+              @mouseleave="onCellLeave"
+              @mousedown="onCellPointerDown(d, period.number, $event)"
             ></div>
           </template>
 
@@ -837,6 +956,16 @@ function hideTooltip() {
           </template>
         </div>
       </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <CourseCustomDialog
+        v-if="showCustomDialog"
+        :x="dialogPos.x"
+        :y="dialogPos.y"
+        @close="closeCustomDialog"
+        @confirm="closeCustomDialog"
+      />
     </Teleport>
   </section>
 </template>
@@ -1200,6 +1329,54 @@ function hideTooltip() {
   line-height: 1;
 }
 
+/* 查看 / 编辑 切换开关：胶囊分段控件，白色指示块在两端滑动切换 */
+.mode-switch {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 999px;
+  background: rgba(161, 182, 203, 0.396);
+}
+
+.mode-indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 3px);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(30, 64, 110, 0.16);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 处于"编辑"时指示块滑向右侧（移动一格 + 间隙） */
+.mode-switch.mode-edit .mode-indicator {
+  transform: translateX(calc(100% + 2px));
+}
+
+.mode-btn {
+  position: relative;
+  z-index: 1;
+  height: 24px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #5b6b7f;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.mode-btn.active {
+  color: #1d4ed8;
+}
+
 .weekly-grid {
   display: grid;
   grid-template-columns: 92px repeat(7, minmax(118px, 1fr));
@@ -1316,10 +1493,22 @@ function hideTooltip() {
 
 .grid-cell {
   background: #fff;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .grid-cell-today {
   background: #eff6ff;
+}
+
+/* 悬停：淡淡的内阴影提示当前格子 */
+.grid-cell.cell-hovered {
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.18);
+}
+
+/* 框选/选中：半透明蓝色覆盖 + 内描边 */
+.grid-cell.cell-selected {
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: inset 0 0 0 1.5px rgba(37, 99, 235, 0.32);
 }
 
 .course-card-today {
