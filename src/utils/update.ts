@@ -4,9 +4,15 @@
  */
 import { reactive } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { readStoredValue, writeStoredValue } from './storage'
 
 // "不再提示"记录的版本号：只对同一版本生效，新版本到来时会再次提醒
 const DISMISS_KEY = 'fzu_update_dismissed_version'
+
+// 自动检查的最小间隔：进入主页面就会触发一次检查，没必要每次开窗都去请求 GitHub
+// （raw.githubusercontent.com 国内直连经常超时，会白挂一个十几秒的后台请求）
+const LAST_CHECK_KEY = 'fzu_update_last_check'
+const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
 export interface UpdateInfo {
   version: string
@@ -53,6 +59,13 @@ function isDismissed(version: string): boolean {
  */
 export async function checkForUpdate(manual = false) {
   if (updateState.checking) return
+  if (!manual) {
+    // 距离上次自动检查不足间隔就直接跳过，避免每次进主页面都发一次请求
+    const lastCheckedAt = readStoredValue<number>(LAST_CHECK_KEY, 0)
+    if (Date.now() - lastCheckedAt < AUTO_CHECK_INTERVAL_MS) return
+    // 先记录时间再请求：即使这次失败也按间隔退避，不会每次启动都卡在超时上
+    writeStoredValue(LAST_CHECK_KEY, Date.now())
+  }
   const auth = useAuthStore()
   updateState.checking = true
   updateState.error = ''
@@ -91,15 +104,12 @@ export async function checkForUpdate(manual = false) {
   }
 }
 
-/** 点击"更新"：开始下载更新包并监听进度/完成事件 */
+/** 点击"更新"：打开浏览器下载页（Tauri 简化版，完整自动更新留待 tauri-plugin-updater） */
 export function startDownload() {
   const info = updateState.info
   if (!info?.downloadUrl || updateState.downloading) return
-  updateState.downloading = true
-  updateState.progress = 0
-  updateState.downloaded = false
-  updateState.error = ''
   window.electronAPI?.downloadUpdate(info.downloadUrl)
+  updateState.visible = false
 }
 
 /**

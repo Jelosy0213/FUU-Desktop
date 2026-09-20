@@ -1,0 +1,16 @@
+/*
+ * Copyright (C) 2026 Jelosy
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * 仅保留窗口控制图标字体：标题栏的最小化/最大化/关闭等按钮依赖其私有区码位。
+ * 正文与标题一律使用系统字体（见 tokens.css 的 --ui-font-sans），
+ * 不再随包分发 MiSans / Inter，避免安装包被字体体积撑大。
+ */
+
+@font-face {
+  font-family: 'SegoeIcons';
+  src: url('/fonts/window/SegoeIcons.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}

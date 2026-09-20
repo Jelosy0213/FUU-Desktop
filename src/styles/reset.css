@@ -1,0 +1,51 @@
+/*
+ * Copyright (C) 2026 Jelosy
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * 全局重置：只处理元素级默认值，不含任何组件类样式。
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--ui-font-sans);
+  background: var(--ui-bg);
+  color: var(--ui-ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* 禁用图片拖动（头像、验证码等不被拖拽/出现拖影） */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 全局禁用文字选择（避免误选中蓝色高亮），输入类元素除外 */
+* {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 链接统一使用默认光标，与桌面应用风格一致 */
+a,
+a:hover {
+  cursor: default;
+}

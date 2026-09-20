@@ -15,8 +15,10 @@ declare global {
     electronAPI?: {
       loginSuccess: (username?: string) => void
       logout: (explicit?: boolean) => void
+      // 密码存于系统凭据库且不回传前端，故只有 remembers / username 两个只读入口
       credentials: {
-        get: () => Promise<{ username: string; password: string } | null>
+        remembers: () => Promise<boolean>
+        username: () => Promise<string | null>
         set: (data: { username: string; password: string }) => Promise<boolean>
         clear: () => Promise<boolean>
       }

@@ -5,12 +5,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { CourseItem, CoursePeriod, CourseResult, ExamItem, ExamResult, SchoolCalendar } from '../stores/auth'
+import type { CourseItem, CoursePeriod, CourseResult, ExamItem, ExamResult, SchoolCalendar } from '../types/fzu'
 import { useAuthStore } from '../stores/auth'
 import SettingsView from './SettingsView.vue'
 import ProfileView from './ProfileView.vue'
 import CourseCustomDialog from './CourseCustomDialog.vue'
 import avatarImg from '../image/avatar.jpg'
+import { setTitlebarBack } from '../utils/titlebarBack'
 
 const props = defineProps<{
   courseLoading: boolean
@@ -96,6 +97,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleDocumentKeydown)
   window.removeEventListener('mouseup', handleWindowMouseUp)
   if (wheelTimer) clearTimeout(wheelTimer)
+  // 组件卸载后顶栏按钮不应再持有已失效的返回动作
+  setTitlebarBack(null)
 })
 
 watch(currentTermValue, () => {
@@ -105,6 +108,16 @@ watch(currentTermValue, () => {
 function selectSection(section: 'schedule' | 'study' | 'settings' | 'profile') {
   activeSection.value = section
 }
+
+// 顶栏左上角返回按钮：设置/学业/个人页是课表的二级视图，返回即回到课表；
+// 课表层本身是顶层，注销返回动作后按钮保持禁用，不会出现"点了没反应"
+watch(
+  activeSection,
+  (section) => {
+    setTitlebarBack(section === 'schedule' ? null : () => selectSection('schedule'))
+  },
+  { immediate: true },
+)
 
 // 当前学期开始日期：以课表页学期为准（courseResult.semester），校历 currentTerm 兜底
 // （教务处校历页的"当前学期"在暑假过渡期可能还是上一学期，而课表已切到新学期）

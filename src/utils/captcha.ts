@@ -226,7 +226,7 @@ export async function recognizeCaptchaFromUrl(url: string): Promise<string | nul
 }
 
 // 等待 <img> 的 src 更新为 targetSrc 且完成加载；超时返回 false。
-// targetSrc 形如 "/api/captcha?t=..."，img.src 为绝对地址，用 endsWith 匹配。
+// targetSrc 为传给 <img> 的地址（当前为 Rust 端返回的 data URL），img.src 可能是其绝对化形式，用 endsWith 匹配。
 export async function waitForCaptchaImage(
   img: HTMLImageElement | null,
   targetSrc: string,

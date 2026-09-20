@@ -14,9 +14,9 @@ dist-ssr
 coverage
 *.local
 
-# electron-builder 打包输出
-release
-dist_electron
+# Tauri / Rust 打包输出
+src-tauri/target
+src-tauri/gen
 
 # Editor directories and files
 .vscode/*

@@ -7,16 +7,17 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from './stores/auth'
-import ReauthPanel from './components/ReauthPanel.vue'
 import UpdateDialog from './components/UpdateDialog.vue'
 import { updateState } from './utils/update'
+import { titlebarBackAction, triggerTitlebarBack } from './utils/titlebarBack'
 
 const route = useRoute()
 const auth = useAuthStore()
 const { toastMessage, toastType } = storeToRefs(auth)
 const isLoginPage = computed(() => route.name === 'login')
-const isForgotPasswordPage = computed(() => route.name === 'forgot-password')
 const isMiniPage = computed(() => route.name === 'mini')
+// 只有页面注册了返回动作（如课表内的设置页）时按钮才可用
+const canGoBack = computed(() => titlebarBackAction.value !== null)
 const electronAPI = window.electronAPI
 
 const isMaximized = ref(false)
@@ -31,18 +32,15 @@ onMounted(() => {
 <template>
   <main class="ui-page-shell page-shell">
     <template v-if="isLoginPage">
-      <div class="login-drag-region" aria-hidden="true"></div>
+      <div class="login-drag-region" aria-hidden="true" data-tauri-drag-region></div>
       <div class="window-controls login-controls">
         <button class="window-icon minimize-icon" type="button" title="最小化" aria-label="最小化" @click="electronAPI?.minimize()"></button>
         <button class="window-icon close-icon close-control" type="button" title="关闭" aria-label="关闭" @click="electronAPI?.close()"></button>
       </div>
     </template>
-    <template v-else-if="isForgotPasswordPage">
-      <!-- 忘记密码窗口的顶栏由 ForgotPasswordView 自行渲染，与主页保持一致 -->
-    </template>
     <template v-else-if="isMiniPage">
       <div class="main-titlebar mini-titlebar">
-        <div class="titlebar-drag" aria-hidden="true"></div>
+        <div class="titlebar-drag" aria-hidden="true" data-tauri-drag-region></div>
         <div class="mini-toolbar">
           <div id="schedule-toolbar-slot" class="schedule-toolbar-slot"></div>
         </div>
@@ -62,13 +60,14 @@ onMounted(() => {
     </template>
     <template v-else>
       <div class="main-titlebar">
-        <div class="titlebar-drag" aria-hidden="true"></div>
+        <div class="titlebar-drag" aria-hidden="true" data-tauri-drag-region></div>
         <button
           type="button"
           class="back-nav-btn"
           title="返回"
           aria-label="返回"
-          disabled
+          :disabled="!canGoBack"
+          @click="triggerTitlebarBack()"
         ></button>
         <div class="titlebar-brand" aria-hidden="true">
           <span>福uu(第三方)</span><span class="titlebar-preview">PREVIEW</span>
@@ -106,8 +105,6 @@ onMounted(() => {
         {{ toastMessage }}
       </div>
     </Transition>
-
-    <ReauthPanel v-if="auth.sessionExpired" @close="auth.dismissSessionExpired()" />
 
     <UpdateDialog v-if="updateState.visible" />
   </main>

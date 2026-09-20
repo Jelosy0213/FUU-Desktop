@@ -5,79 +5,16 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { recognizeCaptchaFromUrl } from '../utils/captcha'
-
-export interface CoursePeriod {
-  number: number
-  time: string
-  segment: string
-}
-
-export interface CourseItem {
-  name: string
-  teacher: string
-  location: string
-  weeks: string
-  day: number
-  start: number
-  end: number
-  single?: boolean
-  double?: boolean
-}
-
-export interface CourseResult {
-  title?: string
-  semester?: string
-  terms?: string[]
-  periods?: CoursePeriod[]
-  courses?: CourseItem[]
-  htmlLength?: number
-  snippet?: string
-}
-
-export interface ExamItem {
-  name: string
-  date: string
-  time: string
-  location: string
-  seat: string
-  type: string
-  teacher?: string
-  raw?: string[]
-}
-
-export interface ExamResult {
-  title?: string
-  exams?: ExamItem[]
-  htmlLength?: number
-  snippet?: string
-}
-
-// 个人信息（学历信息模块）：键为中文标签，值为对应字段文本
-export interface ProfileInfo {
-  学号?: string
-  姓名?: string
-  性别?: string
-  出生日期?: string
-  民族?: string
-  政治面貌?: string
-  年级?: string
-  学院名称?: string
-  专业名称?: string
-  学制?: string
-  培养层次?: string
-  入学日期?: string
-}
-
-export interface SchoolTerm {
-  term: string
-  startDate: string
-  endDate: string
-}
-
-export interface SchoolCalendar {
-  currentTerm: string
-  terms: SchoolTerm[]
-}
+import { fzuApi } from '../api/fzu'
+import { getErrorMessage } from '../utils/errors'
+import {
+  readStoredString,
+  readStoredValue,
+  removeStoredKey,
+  writeStoredString,
+  writeStoredValue,
+} from '../utils/storage'
+import type { CourseResult, ExamResult, ProfileInfo, SchoolCalendar } from '../types/fzu'
 
 // 主动退出标记由主进程持久化（auth:set-explicit-logout IPC），启动时据此决定直接打开主窗口还是登录窗
 
@@ -91,25 +28,15 @@ interface UISettings {
 const UI_SETTINGS_CACHE_KEY = 'fzu_ui_settings'
 
 function readUISettings(): UISettings {
-  try {
-    const raw = localStorage.getItem(UI_SETTINGS_CACHE_KEY)
-    if (!raw) return { courseCardMotion: false, windowMemory: true }
-    const parsed = JSON.parse(raw) as Partial<UISettings>
-    return {
-      courseCardMotion: parsed.courseCardMotion ?? false,
-      windowMemory: parsed.windowMemory ?? true,
-    }
-  } catch {
-    return { courseCardMotion: false, windowMemory: true }
+  const stored = readStoredValue<Partial<UISettings> | null>(UI_SETTINGS_CACHE_KEY, null)
+  return {
+    courseCardMotion: stored?.courseCardMotion ?? false,
+    windowMemory: stored?.windowMemory ?? true,
   }
 }
 
 function writeUISettings(settings: UISettings) {
-  try {
-    localStorage.setItem(UI_SETTINGS_CACHE_KEY, JSON.stringify(settings))
-  } catch {
-    // 忽略：写入失败不影响功能
-  }
+  writeStoredValue(UI_SETTINGS_CACHE_KEY, settings)
 }
 
 // 校历缓存：学期起止日期极少变动，登录后获取一次，7 天内直接读缓存
@@ -125,20 +52,11 @@ interface SchoolCalendarCache {
 }
 
 function readSchoolCalendarCache(): SchoolCalendarCache | null {
-  try {
-    const raw = localStorage.getItem(SCHOOL_CALENDAR_CACHE_KEY)
-    return raw ? (JSON.parse(raw) as SchoolCalendarCache) : null
-  } catch {
-    return null
-  }
+  return readStoredValue<SchoolCalendarCache | null>(SCHOOL_CALENDAR_CACHE_KEY, null)
 }
 
 function writeSchoolCalendarCache(data: SchoolCalendar) {
-  try {
-    localStorage.setItem(SCHOOL_CALENDAR_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data }))
-  } catch {
-    // 忽略：缓存写入失败不影响功能
-  }
+  writeStoredValue(SCHOOL_CALENDAR_CACHE_KEY, { savedAt: Date.now(), data })
 }
 
 // 课表/考试/周数/学期缓存：主窗口直开时先展示上次数据，后台登录成功后刷新，提升打开体感
@@ -155,26 +73,16 @@ interface CourseCache {
 
 // 仅对同一账号恢复缓存，避免不同用户串数据
 function readCourseCache(username: string): CourseCache | null {
-  try {
-    const raw = localStorage.getItem(COURSE_CACHE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as CourseCache
-    return parsed.username === username ? parsed : null
-  } catch {
-    return null
-  }
+  const cached = readStoredValue<CourseCache | null>(COURSE_CACHE_KEY, null)
+  return cached?.username === username ? cached : null
 }
 
 function writeCourseCache(data: CourseCache) {
-  try {
-    localStorage.setItem(COURSE_CACHE_KEY, JSON.stringify(data))
-  } catch {
-    // 忽略：缓存写入失败不影响功能
-  }
+  writeStoredValue(COURSE_CACHE_KEY, data)
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const savedSession = localStorage.getItem(AUTH_SESSION_KEY)
+  const savedSession = readStoredString(AUTH_SESSION_KEY)
   const username = ref(savedSession || '')
   const loggedIn = ref(Boolean(savedSession))
   const courseLoading = ref(false)
@@ -193,8 +101,6 @@ export const useAuthStore = defineStore('auth', () => {
   const uiSettings = ref<UISettings>(readUISettings())
   const toastMessage = ref('')
   const toastType = ref<'success' | 'error' | 'info'>('info')
-  // 会话已过期：静默重新登录失败后置位，触发重新登录面板
-  const sessionExpired = ref(false)
   // 静默重新登录进行中标记：避免心跳/课表请求并发触发重复登录
   let reloginInFlight = false
 
@@ -209,6 +115,24 @@ export const useAuthStore = defineStore('auth', () => {
     toastTimer = setTimeout(() => {
       toastMessage.value = ''
     }, 2600)
+  }
+
+  // 进行中的胶囊提示：不自动消失，由后续 showToast（成功/失败）或 clearToast 关闭
+  function showLoadingToast(message: string) {
+    if (toastTimer) {
+      clearTimeout(toastTimer)
+      toastTimer = undefined
+    }
+    toastMessage.value = message
+    toastType.value = 'info'
+  }
+
+  function clearToast() {
+    if (toastTimer) {
+      clearTimeout(toastTimer)
+      toastTimer = undefined
+    }
+    toastMessage.value = ''
   }
 
   function setCourseCardMotion(enabled: boolean) {
@@ -242,29 +166,26 @@ export const useAuthStore = defineStore('auth', () => {
     persistCourseCache()
   }
 
-  async function login(account: string, password: string, verifyCode: string, silent = false) {
-    const response = await fetch('/api/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        username: account.trim(),
-        password,
-        verifyCode: verifyCode.trim(),
-      }),
-    })
-    const result = await response.json()
-    if (!response.ok || !result.success) {
-      throw new Error(result.message || '登录失败，请重试')
-    }
-    username.value = account.trim()
+  // 登录成功后的统一收尾：写入本地登录态、清除主动退出标记、拉取课表
+  async function finishLogin(account: string, silent: boolean) {
+    username.value = account
     loggedIn.value = true
-    localStorage.setItem(AUTH_SESSION_KEY, username.value)
-    sessionExpired.value = false
+    writeStoredString(AUTH_SESSION_KEY, username.value)
     // 登录成功即视为完整登录：清除主动退出标记，后续启动可继续自动登录
     window.electronAPI?.setExplicitLogout(false)
     await fetchCoursePage(silent)
+  }
+
+  async function login(account: string, password: string, verifyCode: string, silent = false) {
+    const trimmedAccount = account.trim()
+    await fzuApi.login(trimmedAccount, password, verifyCode.trim())
+    await finishLogin(trimmedAccount, silent)
+  }
+
+  // 用系统凭据库中保存的账号密码重新登录：密码由 Rust 侧读取，前端只出验证码答案
+  async function reloginWithRemembered(verifyCode: string, silent = false) {
+    await fzuApi.reloginWithRemembered(verifyCode.trim())
+    await finishLogin(username.value, silent)
   }
 
   // 会话过期后的静默重新登录：自动识别验证码并重登，全程不打扰用户。
@@ -273,18 +194,19 @@ export const useAuthStore = defineStore('auth', () => {
     if (!loggedIn.value || reloginInFlight) return false
     reloginInFlight = true
     try {
-      let remembered: { username: string; password: string } | null = null
+      let remembered = false
       try {
-        remembered = (await window.electronAPI?.credentials.get()) || null
+        remembered = (await window.electronAPI?.credentials.remembers()) ?? false
       } catch {
-        remembered = null
+        remembered = false
       }
       if (!remembered) return false
       for (let attempt = 0; attempt < SILENT_RELOGIN_ATTEMPTS; attempt++) {
-        const answer = await recognizeCaptchaFromUrl(`/api/captcha?t=${Date.now()}`)
+        const captchaUrl = await fzuApi.getCaptcha(username.value)
+        const answer = await recognizeCaptchaFromUrl(captchaUrl)
         if (answer == null) continue
         try {
-          await login(remembered.username, remembered.password, answer, true)
+          await reloginWithRemembered(answer, true)
           return true
         } catch {
           // 验证码识别有误或已失效：换新验证码重试
@@ -296,10 +218,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // 会话过期统一处理入口：先尝试静默重新登录，失败才弹出重新登录面板
-  async function handleSessionExpired() {
-    const ok = await trySilentRelogin()
-    if (!ok) sessionExpired.value = true
+  // 会话过期统一处理入口：静默重新登录，成功返回 true。
+  // 失败（无保存凭据 / 识别或登录失败）返回 false，由调用方放弃本次请求，全程不打扰用户
+  async function handleSessionExpired(): Promise<boolean> {
+    return trySilentRelogin()
   }
 
   // 进入应用时对当前课表进行一次拉取：会话有效直接刷新缓存课表；
@@ -309,21 +231,11 @@ export const useAuthStore = defineStore('auth', () => {
     await fetchCoursePage(true)
   }
 
-  function dismissSessionExpired() {
-    sessionExpired.value = false
-  }
-
   // 获取当前教学周（week.asp 代理），失败不阻塞课表加载
   async function fetchCurrentWeek() {
     try {
-      const response = await fetch(
-        `/api/locate-date?account=${encodeURIComponent(username.value)}`,
-      )
-      const result = await response.json()
-      if (response.ok && result.success) {
-        currentWeek.value = result.week
-        persistCourseCache()
-      }
+      currentWeek.value = await fzuApi.getCurrentWeek(username.value)
+      persistCourseCache()
     } catch {
       // 忽略：周数获取失败不影响课表展示
     }
@@ -341,15 +253,9 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
     try {
-      const response = await fetch(
-        `/api/school-calendar?account=${encodeURIComponent(username.value)}`,
-      )
-      const result = await response.json()
-      if (response.ok && result.success) {
-        const data = { currentTerm: result.currentTerm, terms: result.terms }
-        schoolCalendar.value = data
-        writeSchoolCalendarCache(data)
-      }
+      const data = await fzuApi.getSchoolCalendar(username.value)
+      schoolCalendar.value = data
+      writeSchoolCalendarCache(data)
     } catch {
       // 忽略：校历获取失败不影响课表展示（已有缓存则继续用缓存）
     }
@@ -359,22 +265,13 @@ export const useAuthStore = defineStore('auth', () => {
     if (examLoading.value) return false
     examLoading.value = true
     try {
-      const response = await fetch('/api/exam-list', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          account: username.value,
-          ...(selectedTerm.value ? { term: selectedTerm.value } : {}),
-        }),
-      })
-      const result = await response.json()
-      if (!response.ok || !result.success) throw new Error(result.message || '考试信息获取失败')
+      const result = await fzuApi.getExamList(username.value, selectedTerm.value)
       examResult.value = result
       persistCourseCache()
       if (!silent) showToast('考试信息获取成功', 'success')
       return true
     } catch (error) {
-      if (!silent) showToast(error instanceof Error ? error.message : '考试信息获取失败', 'error')
+      if (!silent) showToast(getErrorMessage(error, '考试信息获取失败'), 'error')
       return false
     } finally {
       examLoading.value = false
@@ -386,23 +283,17 @@ export const useAuthStore = defineStore('auth', () => {
     if (profileLoading.value) return false
     profileLoading.value = true
     try {
-      const response = await fetch('/api/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: username.value }),
-      })
-      const result = await response.json()
-      if (!response.ok || !result.success) throw new Error(result.message || '个人信息获取失败')
-      profile.value = result.profile
+      profile.value = await fzuApi.getProfile(username.value)
       return true
     } catch (error) {
-      const message = error instanceof Error ? error.message : '个人信息获取失败'
+      const message = getErrorMessage(error, '个人信息获取失败')
       if (!silent) {
         if (/重新登录/.test(message)) {
-          // 会话失效：先静默重新登录保活会话，再静默重试（成功则直接展示，失败交由重新登录面板兜底）
-          await handleSessionExpired()
+          // 会话失效：先静默重新登录保活会话，成功则静默重试；
+          // 失败则放弃本次获取，不打扰用户（继续展示已有数据）
+          const ok = await handleSessionExpired()
           profileLoading.value = false
-          return await fetchProfile(true)
+          return ok ? await fetchProfile(true) : false
         }
         showToast(message, 'error')
       }
@@ -430,6 +321,9 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     courseLoading.value = true
+    // 用户主动触发（登录后首次获取/刷新/切换学期）时先弹胶囊提示，避免"点了没反应"；
+    // 静默后台刷新不打扰用户
+    if (!silent) showLoadingToast('正在获取课表......')
     // 注意：加载期间不清空 courseResult，刷新/切换学期时旧课表保留，避免整块闪烁
     fetchCurrentWeek()
     fetchSchoolCalendar()
@@ -438,27 +332,14 @@ export const useAuthStore = defineStore('auth', () => {
     let ok = false
     let needRelogin = false
     try {
-      const response = await fetch('/api/course-page', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          account: username.value,
-          ...(selectedTerm.value ? { term: selectedTerm.value } : {}),
-        }),
-      })
-      const result = await response.json()
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || '课表页面获取失败')
-      }
-      toastMessage.value = ''
+      const result = await fzuApi.getCoursePage(username.value, selectedTerm.value)
       courseResult.value = result
       persistCourseCache()
       if (!silent) showToast('课表获取成功', 'success')
+      else clearToast()
       ok = true
     } catch (error) {
-      const message = error instanceof Error ? error.message : '课表页面获取失败'
+      const message = getErrorMessage(error, '课表页面获取失败')
       // 会话失效（代理返回"重新登录"）：静默/手动请求都触发重登，保证拉取最终生效
       if (/重新登录/.test(message)) needRelogin = true
       else if (!silent) showToast(message, 'error')
@@ -471,9 +352,10 @@ export const useAuthStore = defineStore('auth', () => {
     // 锁已释放后再处理会话失效：若在 catch 内等待重登，重登内部重新拉课表会排队等待
     // 本请求释放锁，而本请求又要等重登返回才释放，造成死锁
     if (needRelogin) {
-      await handleSessionExpired()
-      // 重登成功（未弹出重新登录面板）后重新拉取课表，保证本次操作真正生效
-      if (!sessionExpired.value) return fetchCoursePage(silent)
+      // 静默重登成功才重新拉取课表，保证本次操作真正生效
+      if (await handleSessionExpired()) return fetchCoursePage(silent)
+      // 重登失败：清掉进行中提示，不打扰用户（继续展示已有课表）
+      clearToast()
       return false
     }
     return ok
@@ -490,9 +372,9 @@ export const useAuthStore = defineStore('auth', () => {
   // 主动退出会写入主进程标记，下次启动直接显示登录小窗；会话失效清理等非主动场景不写标记
   function logout(explicit = true) {
     loggedIn.value = false
-    localStorage.removeItem(AUTH_SESSION_KEY)
+    removeStoredKey(AUTH_SESSION_KEY)
     // 退出登录即清空课表缓存：重新登录时不读到上次的旧课表（新会话必须是干净状态）
-    localStorage.removeItem(COURSE_CACHE_KEY)
+    removeStoredKey(COURSE_CACHE_KEY)
     window.electronAPI?.logout(explicit)
     username.value = ''
     courseResult.value = null
@@ -502,7 +384,6 @@ export const useAuthStore = defineStore('auth', () => {
     schoolCalendar.value = null
     selectedTerm.value = null
     toastMessage.value = ''
-    sessionExpired.value = false
     if (toastTimer) {
       clearTimeout(toastTimer)
       toastTimer = undefined
@@ -529,8 +410,8 @@ export const useAuthStore = defineStore('auth', () => {
     toastMessage,
     toastType,
     showToast,
-    sessionExpired,
     login,
+    reloginWithRemembered,
     fetchCoursePage,
     fetchExamList,
     fetchProfile,
@@ -539,7 +420,6 @@ export const useAuthStore = defineStore('auth', () => {
     validateStoredSession,
     selectTerm,
     logout,
-    dismissSessionExpired,
     startupAutoLogin,
   }
 })

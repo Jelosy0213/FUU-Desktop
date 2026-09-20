@@ -1,0 +1,47 @@
+[package]
+name = "fzu_desktop"
+version = "0.4.1"
+description = "福UU（第三方）"
+authors = ["Jelosy"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "fzu_desktop_lib"
+# 仅桌面端：只需 rlib。staticlib / cdylib 只有移动端（Android/iOS）才用得上，
+# 保留它们会让每次重建都额外产出一个静态库和一个 DLL，实测增量编译明显更慢
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1.36", features = ["full"] }
+md-5 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+chrono = "0.4"
+regex = "1"
+url = "2"
+anyhow = "1.0"
+opener = "0.7"
+keyring = "4.2.0"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+# 发布构建：体积与构建速度的折中。
+# codegen-units 对**所有**依赖生效，设为 1 会让每个 crate 的代码生成退化成单线程，
+# 整个依赖树（数百个 crate）都会被拖慢；lto = true（fat LTO）则在最后链一次全图优化，
+# 单次增量重建也要几分钟。改为 thin LTO + 多 codegen units 后，体积略增、构建显著变快。
+[profile.release]
+codegen-units = 4
+lto = "thin"
+opt-level = "s"
+panic = "abort"
+strip = true

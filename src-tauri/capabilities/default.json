@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "本地可信窗口的默认能力：仅 IPC 与窗口控制所需权限",
+  "windows": ["*"],
+  "permissions": ["core:default"]
+}

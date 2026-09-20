@@ -5,6 +5,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { fzuApi } from '../api/fzu'
 
 const auth = useAuthStore()
 const electronAPI = window.electronAPI
@@ -18,15 +19,12 @@ localStorage.removeItem('fzu_remember_login')
 const password = ref('')
 const verifyCode = ref('')
 const rememberPassword = ref(false)
-const captchaVersion = ref(Date.now())
+const captchaUrl = ref('')
 const captchaLoading = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
 
 const isDemoAccount = computed(() => auth.username.trim() === DEMO_ACCOUNT)
-const captchaUrl = computed(
-  () => `/api/captcha?t=${captchaVersion.value}&account=${encodeURIComponent(auth.username.trim())}`,
-)
 const canSubmit = computed(
   () =>
     auth.username.trim().length > 0 &&
@@ -34,18 +32,33 @@ const canSubmit = computed(
     (isDemoAccount.value || verifyCode.value.trim().length > 0),
 )
 
-function refreshCaptcha() {
+async function refreshCaptcha() {
   captchaLoading.value = true
-  captchaVersion.value = Date.now()
+  try {
+    captchaUrl.value = await fzuApi.getCaptcha(auth.username.trim())
+  } catch {
+    captchaUrl.value = ''
+  } finally {
+    captchaLoading.value = false
+  }
 }
 
 function openForgotPassword() {
   window.electronAPI?.openForgotPassword()
 }
 
-async function readRememberedLogin() {
+// 学号仅允许数字，最多 10 位
+function handleUsernameInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  const digits = input.value.replace(/\D/g, '').slice(0, 10)
+  auth.username = digits
+  input.value = digits
+}
+
+// 读回已保存的账号名（密码存于系统凭据库，不回传前端，因此只预填账号）
+async function readRememberedAccount() {
   try {
-    return (await electronAPI?.credentials.get()) || null
+    return (await electronAPI?.credentials.username()) || null
   } catch {
     return null
   }
@@ -85,7 +98,7 @@ async function handleLogin() {
 }
 
 onMounted(async () => {
-  // 重启后 localStorage 可能残留登录会话，但代理内存中的教务会话已清空：
+  // 重启后 localStorage 可能残留登录会话，但 Rust 端内存中的教务会话已清空：
   // 静默校验一次课表请求，有效则直接进入主窗口，失效则清空本地登录态走正常登录
   if (auth.loggedIn) {
     const valid = await auth.validateStoredSession()
@@ -97,10 +110,9 @@ onMounted(async () => {
     auth.logout(false)
   }
 
-  const remembered = await readRememberedLogin()
-  if (remembered) {
-    auth.username = remembered.username
-    password.value = remembered.password
+  const rememberedAccount = await readRememberedAccount()
+  if (rememberedAccount) {
+    auth.username = rememberedAccount
     rememberPassword.value = true
   }
   refreshCaptcha()
@@ -116,8 +128,16 @@ onMounted(async () => {
 
     <form class="form" @submit.prevent="handleLogin">
       <label class="field">
-        <span>账号</span>
-        <input v-model="auth.username" type="text" autocomplete="username" placeholder="请输入学号/工号" />
+        <span>学号</span>
+        <input
+          v-model="auth.username"
+          type="text"
+          inputmode="numeric"
+          maxlength="10"
+          autocomplete="username"
+          placeholder="请输入学号"
+          @input="handleUsernameInput"
+        />
       </label>
 
       <label class="field">
