@@ -151,7 +151,7 @@ onMounted(() => {
   inset: 0 0 auto;
   z-index: 100;
   height: 42px;
-  background: #f2f6fc;
+  background: var(--ui-chrome-bg);
 }
 
 /* 迷你窗口顶栏：周切换靠左，窗口控制靠右 */
@@ -194,7 +194,7 @@ onMounted(() => {
   justify-content: center;
   border: 0;
   background: transparent;
-  color: #2563eb;
+  color: var(--ui-primary-text);
   -webkit-app-region: no-drag;
 }
 
@@ -219,7 +219,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #2563eb;
+  color: var(--ui-primary-text);
   pointer-events: none;
 }
 
@@ -231,7 +231,7 @@ onMounted(() => {
 }
 
 .titlebar-preview {
-  color: #94a3b8;
+  color: var(--ui-muted-4);
   height: 6px;
   font-size: 10px;
   font-weight: 400;
@@ -261,8 +261,9 @@ onMounted(() => {
   width: 46px;
   border: 0;
   background: transparent;
-  color: #5b6b7f;
-  cursor: pointer;
+  color: var(--ui-muted);
+  /* 窗口按钮用系统默认箭头光标：手形更适合"链接/动作"，最小化/关闭这类窗口控制不是 */
+  cursor: default;
   transition: background 0.2s ease, color 0.2s ease;
 }
 
@@ -300,13 +301,13 @@ onMounted(() => {
 }
 
 .window-controls button:hover {
-  background: #edf3fb;
-  color: #102033;
+  background: var(--ui-hover-soft);
+  color: var(--ui-ink);
 }
 
 .window-controls .close-control:hover {
-  background: #c0362c;
-  color: #fff;
+  background: var(--ui-danger);
+  color: var(--ui-on-accent);
 }
 
 :deep(.app-view) {
@@ -320,7 +321,7 @@ onMounted(() => {
   border-top-left-radius: var(--content-corner-radius);
   overflow: hidden;
   /* 底部底色：作为内容之下的背景层，不遮挡内容显示 */
-  background: rgb(242, 246, 252);
+  background: var(--ui-chrome-bg);
 }
 
 /* 用绝对定位的伪元素画边界线，避免 border 占用布局空间导致内容溢出出现滚动条 */
@@ -329,8 +330,8 @@ onMounted(() => {
   position: absolute;
   inset: 0;
   z-index: 5;
-  border-top: var(--content-border-width) solid #dbe3ee;
-  border-left: var(--content-border-width) solid #dbe3ee;
+  border-top: var(--content-border-width) solid var(--ui-border);
+  border-left: var(--content-border-width) solid var(--ui-border);
   border-top-left-radius: var(--content-corner-radius);
   pointer-events: none;
 }
@@ -349,25 +350,25 @@ onMounted(() => {
   max-width: min(92vw, 420px);
   padding: 10px 18px;
   border-radius: 999px;
-  box-shadow: 0 12px 28px rgba(16, 32, 51, 0.16);
+  box-shadow: var(--ui-shadow-toast);
   font-size: 13px;
   line-height: 1.4;
   text-align: center;
-  background: #102033;
-  color: #fff;
+  background: var(--ui-toast-bg);
+  color: var(--ui-toast-ink);
   pointer-events: none;
 }
 
 .toast.success {
-  background: #15803d;
+  background: var(--ui-success);
 }
 
 .toast.error {
-  background: #c0362c;
+  background: var(--ui-danger);
 }
 
 .toast.info {
-  background: #102033;
+  background: var(--ui-toast-bg);
 }
 
 .toast-enter-active,

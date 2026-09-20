@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    utils::config::WindowEffectsConfig, window::Effect, AppHandle, Emitter, Manager,
+    PhysicalPosition, Theme, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 mod jw;
@@ -19,6 +20,35 @@ const MINI_W: (f64, f64) = (400.0, 500.0);
 const FORGOT_W: (f64, f64) = (1080.0, 760.0);
 // 忘记密码窗口直接打开教务处的重置密码页（不再走本地页面）
 const FORGOT_URL: &str = "https://jwcjwxt2.fzu.edu.cn/Login/ReSetPassWord";
+// 启用 Mica 云母的窗口（迷你窗宽度小、效果有限，但确实也是无边框窗，同样让它透出云母）
+const MICA_WINDOWS: [&str; 2] = ["main", "mini"];
+
+// Windows 11 从 build 22000 开始
+const WINDOWS_11_BUILD: u32 = 22_000;
+
+// 只做版本号比较，便于单测（注册表读取单独放在 mica_supported 里）
+fn build_is_windows_11(build: &str) -> bool {
+    build
+        .trim()
+        .parse::<u32>()
+        .is_ok_and(|build| build >= WINDOWS_11_BUILD)
+}
+
+// Mica 云母只在 Windows 11（build >= 22000）可用：更低版本的 DWM 不认这个 backdrop，
+// 而透明窗口在没有 backdrop 时会把桌面直接透出来，所以必须先判断再决定窗口要不要透明。
+// 注意不能用 ProductName 判断——从 Win10 升级上来的 Win11，该项仍写着 "Windows 10"。
+#[cfg(windows)]
+fn mica_supported() -> bool {
+    windows_registry::LOCAL_MACHINE
+        .open(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion")
+        .and_then(|key| key.get_string("CurrentBuildNumber"))
+        .is_ok_and(|build| build_is_windows_11(&build))
+}
+
+#[cfg(not(windows))]
+fn mica_supported() -> bool {
+    false
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct Credentials {
@@ -52,6 +82,24 @@ fn build_window(
     }
 }
 
+// 按系统能力给窗口加上云母背景（仅 Win11）：窗口必须透明——WebView2 的底色是不透明的，
+// 不透明就会把 DWM 画在窗口后面的云母完全盖住；页面侧还要配合让出底色，
+// 见 src/styles/backdrop.css。判断条件与 window_backdrop 命令保持一致，
+// 否则会出现"页面以为有云母、窗口其实不透明"的白屏。
+fn with_backdrop<'a>(
+    label: &str,
+    builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
+) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    if MICA_WINDOWS.contains(&label) && mica_supported() {
+        builder.transparent(true).effects(WindowEffectsConfig {
+            effects: vec![Effect::Mica],
+            ..Default::default()
+        })
+    } else {
+        builder
+    }
+}
+
 fn create_login_window(app: &AppHandle) {
     if app.get_webview_window("login").is_some() {
         return;
@@ -68,10 +116,13 @@ fn create_main_window(app: &AppHandle) {
     if app.get_webview_window("main").is_some() {
         return;
     }
-    let builder = base_builder(app, "main", "index.html")
-        .inner_size(MAIN_W.0, MAIN_W.1)
-        .min_inner_size(990.0, 670.0)
-        .resizable(true);
+    let builder = with_backdrop(
+        "main",
+        base_builder(app, "main", "index.html")
+            .inner_size(MAIN_W.0, MAIN_W.1)
+            .min_inner_size(990.0, 670.0)
+            .resizable(true),
+    );
     build_window(builder, "main");
 }
 
@@ -79,11 +130,14 @@ fn create_mini_window(app: &AppHandle) {
     if app.get_webview_window("mini").is_some() {
         return;
     }
-    let builder = base_builder(app, "mini", "index.html")
-        .inner_size(MINI_W.0, MINI_W.1)
-        .resizable(false)
-        .maximizable(false)
-        .minimizable(true);
+    let builder = with_backdrop(
+        "mini",
+        base_builder(app, "mini", "index.html")
+            .inner_size(MINI_W.0, MINI_W.1)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(true),
+    );
     build_window(builder, "mini");
 }
 
@@ -143,15 +197,32 @@ async fn show_login(app: AppHandle) {
 
 #[tauri::command]
 async fn show_main(app: AppHandle) {
-    create_main_window(&app);
+    // 先关登录窗、再建主窗：前端据"当前进程里有几个窗口"判断自己是不是本次启动的第一个窗口
+    // （第一个窗口负责把课表定位到本周），这里保持同一时序可避免它被误判为后续窗口
     if let Some(w) = app.get_webview_window("login") {
         let _ = w.close();
     }
+    create_main_window(&app);
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
     }
     write_window_mode(&app, "main");
+}
+
+// 当前进程里已有几个窗口：前端启动时据此判断自己是不是"本次启动的第一个窗口"。
+// 第一个窗口负责把课表定位到本周，之后创建的窗口继承当前展示周。
+#[tauri::command]
+fn window_count(app: AppHandle) -> usize {
+    app.webview_windows().len()
+}
+
+// 展示周变化时广播给所有窗口：让隐藏着的另一窗口也一起切换（前端按幂等处理，相同值会忽略）
+#[tauri::command]
+fn notify_week_changed(app: AppHandle, week: u32) {
+    if let Err(error) = app.emit("week-changed", week) {
+        eprintln!("[window] 广播展示周失败：{error}");
+    }
 }
 
 #[tauri::command]
@@ -166,8 +237,14 @@ async fn enter_mini(app: AppHandle) {
         }
         let _ = mini.show();
         let _ = mini.set_focus();
+        // 告诉迷你窗"自己被重新显示了"：它据此同步缓存并按需刷新数据。
+        // 不用焦点事件，是因为在小窗里操作会反复触发焦点事件，会让每次交互都拉一轮教务数据
+        let _ = app.emit("mini-shown", ());
     }
-    let _ = main.hide();
+    // 隐藏主窗口：不再吞掉错误（原来用 let _ = 时失败完全无声）
+    if let Err(error) = main.hide() {
+        eprintln!("[window] 隐藏主窗口失败：{error}");
+    }
     write_window_mode(&app, "mini");
 }
 
@@ -178,8 +255,13 @@ async fn exit_mini(app: AppHandle) {
         let _ = w.show();
         let _ = w.set_focus();
     }
+    // 迷你窗只隐藏、不销毁：重建一个 webview 意味着整页重载（Vue 应用 + 课表数据），
+    // 来回切换的代价远大于保留一个窗口。真正关闭迷你窗仍然等同于退出应用（见 window_close），
+    // 而主窗关闭时会连带清掉隐藏的迷你窗，避免进程留着没有入口的隐藏窗口。
     if let Some(w) = app.get_webview_window("mini") {
-        let _ = w.close();
+        if let Err(error) = w.hide() {
+            eprintln!("[window] 隐藏迷你窗口失败：{error}");
+        }
     }
     write_window_mode(&app, "main");
 }
@@ -220,7 +302,46 @@ async fn window_close(window: WebviewWindow) {
             let _ = main.close();
         }
     }
+    // 反过来同理：迷你窗平时只隐藏不销毁，关掉主窗时必须一并清掉它，
+    // 否则进程会带着一个无法唤回的隐藏窗口继续活着
+    if window.label() == "main" {
+        if let Some(mini) = window.app_handle().get_webview_window("mini") {
+            let _ = mini.close();
+        }
+    }
     let _ = window.close();
+}
+
+// 当前窗口的背景材质：mica（Win11 云母，页面据此让出底色）或 solid（保持原不透明配色）
+#[tauri::command]
+fn window_backdrop(window: WebviewWindow) -> &'static str {
+    if MICA_WINDOWS.contains(&window.label()) && mica_supported() {
+        "mica"
+    } else {
+        "solid"
+    }
+}
+
+// 把设置里选定的主题同步给原生窗口。云母是 DWM 按**窗口主题**着色的：
+// 只切页面不切窗口，会出现"深色界面压在浅色云母上"（或反之）的错配。
+// theme 为 None 表示交回系统决定，对应设置里的"系统"档。
+#[tauri::command]
+fn set_window_theme(window: WebviewWindow, theme: Option<String>) -> Result<(), String> {
+    let theme = match theme.as_deref() {
+        Some("light") => Some(Theme::Light),
+        Some("dark") => Some(Theme::Dark),
+        _ => None,
+    };
+    window.set_theme(theme).map_err(|error| error.to_string())
+}
+
+// 主题变化时广播给所有窗口：主题偏好存在 localStorage，每个窗口各有一份 store，
+// 不同步的话隐藏中的窗口（主窗/迷你窗）会停留在旧主题，重新显示时云母与页面对不上
+#[tauri::command]
+fn notify_theme_changed(app: AppHandle, theme: String) {
+    if let Err(error) = app.emit("theme-changed", theme) {
+        eprintln!("[window] 广播主题失败：{error}");
+    }
 }
 
 // ===== 凭据（系统凭据库） =====
@@ -416,6 +537,11 @@ pub fn run() {
             window_minimize,
             window_toggle_maximize,
             window_close,
+            window_backdrop,
+            set_window_theme,
+            notify_theme_changed,
+            window_count,
+            notify_week_changed,
             // 凭据与标记
             credentials_set,
             credentials_clear,
@@ -429,4 +555,19 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_is_windows_11;
+
+    #[test]
+    fn detects_windows_11_by_build_number() {
+        assert!(build_is_windows_11("22621")); // Win11 22H2
+        assert!(build_is_windows_11("22000")); // 下限
+        assert!(build_is_windows_11(" 22621 ")); // 注册表值可能带空白
+        assert!(!build_is_windows_11("19045")); // Win10 22H2
+        assert!(!build_is_windows_11(""));
+        assert!(!build_is_windows_11("unknown"));
+    }
 }

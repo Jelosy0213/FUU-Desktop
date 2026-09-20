@@ -31,6 +31,10 @@ anyhow = "1.0"
 opener = "0.7"
 keyring = "4.2.0"
 
+# 判断是否为 Windows 11（Mica 云母的可用性由系统 build 号决定）
+[target.'cfg(windows)'.dependencies]
+windows-registry = "0.6"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

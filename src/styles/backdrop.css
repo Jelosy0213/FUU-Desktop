@@ -1,0 +1,61 @@
+/*
+ * Copyright (C) 2026 Jelosy
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * 窗口背景材质层：Windows 11 的 Mica 云母由 DWM 画在窗口**后面**，
+ * 因此窗口本身是透明的（见 src-tauri/src/lib.rs 的 create_main_window），
+ * 页面里凡是铺满窗口的底色都必须让出透明度，否则会把云母完全盖住。
+ *
+ * <html data-backdrop> 由 main.ts 依据 window_backdrop 命令的结果写入：
+ * - data-backdrop="mica"：Win11 的主窗与迷你窗，按下面的 WinUI 层级配色；
+ * - 其它情况（Win10、登录窗、纯浏览器）不命中任何规则，保持原有不透明配色。
+ *
+ * 层级映射（WinUI 3）：
+ *   顶栏 + 左侧导航 = 同一层 chrome：云母 + 薄提亮层（两块必须用完全相同的背景值，
+ *                    否则在它们的接缝处（顶栏下沿 / 导航右沿）会看出明显的色差分界）
+ *   内容区         = LayerFillColorDefault：半透明层，保证正文可读
+ * 叠加色本身随主题变化（深色云母上要"提亮"而不是"压白"），取值见 tokens.css 的
+ * --ui-mica-*，因此这里不需要任何主题判断。
+ * 顶栏是 position: fixed，滚动时内容会从它下面穿过；只靠半透明会让文字"穿帮"，
+ * 所以额外用 backdrop-filter 把下层内容糊掉（云母在窗口后面，不受这里影响）。
+ *
+ * 注意：云母的**色调**由 DWM 按窗口主题决定，不是这里能改的——页面切主题时必须
+ * 同步调用 set_window_theme（见 utils/theme.ts），否则会出现"深色界面压在浅色云母上"。
+ */
+
+:root[data-backdrop='mica'] body {
+  background: transparent;
+}
+
+/* 整页底色去掉：云母在顶栏、导航栏以及内容区的间隙里透出来 */
+:root[data-backdrop='mica'] .app-view {
+  background: transparent;
+}
+
+/* 顶栏与左侧导航：同一层 chrome，背景值必须一致（见文件头说明） */
+:root[data-backdrop='mica'] .main-titlebar,
+:root[data-backdrop='mica'] .main-nav {
+  background: var(--ui-mica-chrome-bg);
+  backdrop-filter: blur(20px) saturate(1.4);
+}
+
+/* 导航项的选中/悬停胶囊改成半透明，叠在云母上不突兀 */
+:root[data-backdrop='mica'] .main-nav-item:hover,
+:root[data-backdrop='mica'] .main-nav-item.active {
+  background: var(--ui-mica-pill-bg);
+}
+
+/* 内容区：WinUI 的 LayerFillColorDefault */
+:root[data-backdrop='mica'] .content-shell {
+  background: var(--ui-mica-content-bg);
+}
+
+/* 课表表头（星期行 / 节次列 / 左上角）也用同一层云母材质：
+   它们是 sticky 的，滚动时下面的课程卡片会被糊掉，不再是纯色平铺的灰条 */
+:root[data-backdrop='mica'] .grid-corner,
+:root[data-backdrop='mica'] .grid-day,
+:root[data-backdrop='mica'] .grid-period, 
+:root[data-backdrop='mica'] .grid {
+  background: rgba(1, 1, 1, 0);
+  backdrop-filter: blur(20px) saturate(1.4);
+}

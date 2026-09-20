@@ -3,10 +3,37 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useAuthStore } from '../stores/auth'
 import LoginView from '../views/LoginView.vue'
 import ScheduleView from '../views/ScheduleView.vue'
 import MiniScheduleView from '../views/MiniScheduleView.vue'
+
+// 各窗口共用同一份 index.html，初始路由由窗口 label 决定
+// （忘记密码窗直接加载教务处页面，不经过这里）
+export function routeForLabel(label: string): string | null {
+  switch (label) {
+    case 'main':
+      return '/schedule'
+    case 'mini':
+      return '/mini'
+    default:
+      return null
+  }
+}
+
+// 必须在 createRouter 之前把 hash 设成目标路由。
+// 否则每个窗口的 hash 都是空的：路由先解析成登录页，登录页挂载时会校验会话并调用
+// loginSuccess()（→ show_main），把刚切到迷你模式后已隐藏的主窗口又唤出来，
+// 表现为"主窗口隐藏后又出现"。
+// 这里只改初始 URL，不涉及挂载后的导航，因此不会踩 README 里记录的
+// "mount 之前 router.replace 导致 emitsOptions 报错" 那个坑。
+const windowLabel =
+  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window ? getCurrentWindow().label : ''
+const initialRoute = routeForLabel(windowLabel)
+if (initialRoute && window.location.hash !== `#${initialRoute}`) {
+  window.location.hash = initialRoute
+}
 
 const router = createRouter({
   history: createWebHashHistory(),

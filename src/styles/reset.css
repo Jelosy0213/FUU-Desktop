@@ -44,6 +44,14 @@ textarea {
   -webkit-user-select: text;
 }
 
+/* 占位文字显式走令牌：浏览器默认的占位色不随深色模式切换，
+   在深色输入底上会变成低对比度的灰字 */
+input::placeholder,
+textarea::placeholder {
+  color: var(--ui-placeholder-ink);
+  opacity: 1;
+}
+
 /* 链接统一使用默认光标，与桌面应用风格一致 */
 a,
 a:hover {

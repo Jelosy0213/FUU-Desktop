@@ -6,9 +6,10 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
 import App from './App.vue'
-import router from './router'
+import router, { routeForLabel } from './router'
 import './styles/index.css'
 import { electronAPI } from './utils/desktop'
+import { applyTheme, watchSystemTheme } from './utils/theme'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useAuthStore } from './stores/auth'
 
@@ -24,31 +25,48 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 
-// 各窗口都加载同一份 index.html，靠窗口 label 决定初始路由
-// （忘记密码窗直接加载教务处页面，不经过这里）
-function routeForLabel(label: string): string | null {
-  switch (label) {
-    case 'main':
-      return '/schedule'
-    case 'mini':
-      return '/mini'
-    default:
-      return null
-  }
-}
+// 主题：首屏的 <html data-theme> 已由 index.html 的内联脚本写好（避免闪白），
+// 这里按持久化的偏好再同步一次，并接管运行期——"系统"档需要监听系统主题变化后重新解析；
+// 另一窗口改主题时会广播过来，同样要跟上
+const auth = useAuthStore(pinia)
+applyTheme(auth.uiSettings.theme)
+watchSystemTheme(() => auth.uiSettings.theme)
+window.electronAPI?.onThemeChanged((theme) => auth.applyRemoteTheme(theme))
 
 async function bootstrap() {
   const label = isTauri ? getCurrentWindow().label : ''
   const target = routeForLabel(label)
 
-  // 必须先挂载、再切换初始路由。
-  // 若在 mount 之前调用 router.replace()，首次更新时 Vue 会抛
-  // "Cannot read properties of null (reading 'emitsOptions')"（shouldUpdateComponent 读到空组件实例），
-  // 该元素（标题栏插槽所在区块）的子节点补丁随即中断，表现为顶部课表工具栏完全不渲染。
-  // 挂载后导航发生在微任务内、早于下一帧绘制，因此不会闪现登录页。
+  // 背景材质：Win11 主窗口启用了 Mica 云母，页面必须让出底色，否则会把云母完全盖住。
+  // 在挂载前写好 <html data-backdrop>，避免先渲染成不透明再切换的闪动。
+  let backdrop = 'solid'
+  try {
+    backdrop = (await window.electronAPI?.backdrop?.()) || 'solid'
+  } catch {
+    backdrop = 'solid'
+  }
+  document.documentElement.dataset.backdrop = backdrop
+
+  // 本窗口是不是"本次启动的第一个窗口"：是 → 课表定位到本周；否则继承当前展示周。
+  // 同样在挂载前问好，课表组件才能同步读到结果。
+  let firstWindow = false
+  try {
+    firstWindow = (await window.electronAPI?.windowCount?.()) === 1
+  } catch {
+    firstWindow = false
+  }
+  useAuthStore(pinia).sessionFirstWindow = firstWindow
+
+  // 初始路由已在 router/index.ts 里通过设置 hash 定好（必须在 createRouter 之前），
+  // 所以这里正常不需要再导航，也不会先挂载错页面——之前正是"迷你窗先挂载一次登录页"
+  // 导致登录页校验会话后调用 loginSuccess()，把已隐藏的主窗口又唤了出来。
   app.mount('#app')
 
-  if (target) {
+  // 兜底：万一 hash 没生效，挂载后再切一次。
+  // 不要在 mount 之前 replace：首次更新时 Vue 会抛
+  // "Cannot read properties of null (reading 'emitsOptions')"，标题栏插槽所在区块的
+  // 子节点补丁会中断，表现为顶部课表工具栏完全不渲染。
+  if (target && router.currentRoute.value.path !== target) {
     await router.replace(target)
   }
 

@@ -90,6 +90,9 @@ onMounted(() => {
   document.addEventListener('pointerdown', handleDocumentPointerDown)
   document.addEventListener('keydown', handleDocumentKeydown)
   window.addEventListener('mouseup', handleWindowMouseUp)
+  // 另一窗口切换展示周时同步过来（隐藏中的窗口也会收到广播，保证两边始终一致）。
+  // 只更新 store 里的 courseWeek，displayWeek 由下面的 watch 跟随，避免再广播回去形成来回弹
+  window.electronAPI?.onWeekChanged((week) => auth.applyRemoteWeek(week))
 })
 
 onBeforeUnmount(() => {
@@ -197,8 +200,9 @@ const homeWeek = computed(() => {
   return Math.max(1, effectiveWeek.value)
 })
 
-// 当前展示周：初始继承 store 中保存的展示周（缩放小窗/重启时保持一致），
-// 学期变更（切换学期）时重新定位到本周；展示周变化时写回 store 供另一窗口继承
+// 当前展示周：本次启动的第一个窗口一律定位到本周（不沿用上次看到的周）；
+// 之后创建的窗口（缩放到迷你窗、或从迷你窗放大）继承当前展示周，保证两个窗口一致。
+// 学期变更（切换学期）时也重新定位到本周。
 function locateWeek() {
   const week = Math.min(homeWeek.value, maxWeek.value ?? homeWeek.value)
   return Math.max(1, week)
@@ -207,6 +211,13 @@ function locateWeek() {
 const displayWeek = ref<number | null>(null)
 
 function initDisplayWeek() {
+  if (auth.sessionFirstWindow) {
+    const week = locateWeek()
+    displayWeek.value = week
+    // 写回缓存，供之后创建的窗口继承
+    auth.setCourseWeek(week)
+    return
+  }
   const stored = auth.courseWeek
   displayWeek.value = stored != null ? Math.min(stored, maxWeek.value ?? stored) : locateWeek()
 }
@@ -221,6 +232,16 @@ watch(
   () => props.courseResult?.semester,
   () => {
     displayWeek.value = locateWeek()
+  },
+)
+
+// 另一窗口（主窗/迷你窗）切换展示周后会写入缓存；本窗口重新显示时同步过来，
+// 保持"缩放小窗时周数一致"的行为（迷你窗不再销毁重建后需要这条兜底）
+watch(
+  () => auth.courseWeek,
+  (stored) => {
+    if (stored == null || stored === displayWeek.value) return
+    displayWeek.value = Math.min(stored, maxWeek.value ?? stored)
   },
 )
 
@@ -682,7 +703,10 @@ function closeCustomDialog() {
           class="schedule-content"
           :class="{ 'motion-disabled': !auth.uiSettings.courseCardMotion }"
         >
-        <Teleport to="#schedule-toolbar-slot">
+        <!-- defer：插槽在 App.vue 的标题栏里，与本组件在同一轮渲染中创建；
+             不 defer 时 Teleport 会在挂载阶段立刻查找目标，可能早于插槽进入 DOM，
+             结果是什么都不渲染（切到其它页面再切回来才会重新挂载并正常显示） -->
+        <Teleport defer to="#schedule-toolbar-slot">
           <div v-if="displayWeek !== null" class="schedule-toolbar">
             <div v-if="!compact" class="mode-switch" :class="{ 'mode-edit': scheduleMode === 'edit' }" role="group" aria-label="课表模式">
               <span class="mode-indicator" aria-hidden="true"></span>
@@ -989,7 +1013,7 @@ function closeCustomDialog() {
   display: block;
   width: 100%;
   min-height: 100vh;
-  background: rgb(242, 246, 252);
+  background: var(--ui-chrome-bg);
 }
 
 .schedule-layout {
@@ -1012,7 +1036,7 @@ function closeCustomDialog() {
   align-items: stretch;
   gap: 6px;
   padding: 10px 8px;
-  background: #f2f6fc;
+  background: var(--ui-chrome-bg);
 }
 
 .main-nav-item {
@@ -1024,7 +1048,7 @@ function closeCustomDialog() {
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-  color: #56708d;
+  color: var(--ui-muted);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -1041,13 +1065,13 @@ function closeCustomDialog() {
 }
 
 .main-nav-item:hover {
-  background: #ffffff;
-  color: #1d4ed8;
+  background: var(--ui-hover-bg);
+  color: var(--ui-primary-text-strong);
   transform: translateY(0px);
 }
 .main-nav-item.active {
-  background: #ffffff;
-  color: #1d4ed8;
+  background: var(--ui-hover-bg);
+  color: var(--ui-primary-text-strong);
   transform: translateY(0px);
 }
 
@@ -1087,7 +1111,7 @@ function closeCustomDialog() {
 }
 
 .avatar-btn.active {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--ui-primary);
   outline-offset: 2px;
 }
 
@@ -1101,8 +1125,8 @@ function closeCustomDialog() {
   display: grid;
   place-items: center;
   gap: 8px;
-  color: #344054;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(248, 250, 252, 0.88) 100%);
+  color: var(--ui-ink-secondary);
+  background: var(--ui-placeholder-bg);
 }
 
 .study-placeholder strong {
@@ -1112,7 +1136,7 @@ function closeCustomDialog() {
 
 .study-placeholder span {
   font-size: 13px;
-  color: #607086;
+  color: var(--ui-muted);
 }
 
 .schedule-toolbar {
@@ -1136,27 +1160,27 @@ function closeCustomDialog() {
   width: 100%;
   height: 34px;
   padding: 0 12px 0 14px;
-  border: 1px solid #d6e0ee;
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.96);
-  color: #102033;
+  background: var(--ui-surface-raised);
+  color: var(--ui-ink);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: var(--ui-shadow-tight);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
 }
 
 .term-select-trigger:hover {
-  border-color: #bfd0ea;
-  background: #fff;
+  border-color: var(--ui-primary-border-soft);
+  background: var(--ui-hover-bg);
 }
 
 .term-select-trigger.open,
 .term-select-trigger:focus-visible {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 3px var(--ui-focus-ring-soft);
 }
 
 .term-select-trigger svg {
@@ -1167,13 +1191,13 @@ function closeCustomDialog() {
   stroke-linecap: round;
   stroke-linejoin: round;
   flex: none;
-  color: #64748b;
+  color: var(--ui-muted-2);
   transition: transform 0.2s ease, color 0.2s ease;
 }
 
 .term-select-trigger.open svg {
   transform: rotate(180deg);
-  color: #2563eb;
+  color: var(--ui-primary-text);
 }
 
 .term-select-value {
@@ -1194,10 +1218,10 @@ function closeCustomDialog() {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 6px;
-  border: 1px solid #d8e2ef;
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.14);
+  background: var(--ui-surface-raised);
+  box-shadow: var(--ui-shadow-float);
   backdrop-filter: blur(8px);
   overscroll-behavior: contain;
   box-sizing: border-box;
@@ -1213,7 +1237,7 @@ function closeCustomDialog() {
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: #334155;
+  color: var(--ui-ink-secondary);
   font-size: 12px;
   text-align: left;
   cursor: pointer;
@@ -1226,26 +1250,26 @@ function closeCustomDialog() {
 }
 
 .term-select-option:hover {
-  background: #eef4ff;
-  color: #1d4ed8;
-  box-shadow: inset 0 0 0 1px rgba(191, 208, 234, 0.28);
+  background: var(--ui-hover-soft);
+  color: var(--ui-primary-text-strong);
+  box-shadow: inset 0 0 0 1px var(--ui-primary-border-soft);
 }
 
 .term-select-option.active {
-  background: #eaf1ff;
-  color: #1d4ed8;
-  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.12);
+  background: var(--ui-active-bg);
+  color: var(--ui-primary-text-strong);
+  box-shadow: inset 0 0 0 1px var(--ui-focus-ring-soft);
 }
 
 .term-select-option:active {
-  background: #dbe7ff;
+  background: var(--ui-active-bg);
 }
 
 .term-select-option:focus-visible {
   outline: none;
-  background: #eaf1ff;
-  color: #1d4ed8;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: var(--ui-active-bg);
+  color: var(--ui-primary-text-strong);
+  box-shadow: 0 0 0 3px var(--ui-focus-ring-soft);
 }
 
 .term-select-option span {
@@ -1293,9 +1317,9 @@ function closeCustomDialog() {
   justify-content: center;
   gap: 4px;
   padding: 2px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ui-grid-line);
   border-radius: 8px;
-  background: rgba(248, 250, 252, 0.82);
+  background: var(--ui-surface-muted);
 }
 
 .week-label {
@@ -1303,7 +1327,7 @@ function closeCustomDialog() {
   text-align: center;
   font-size: 12px;
   font-weight: 700;
-  color: #102033;
+  color: var(--ui-ink);
   transition: color 0.2s ease;
 }
 
@@ -1312,16 +1336,16 @@ function closeCustomDialog() {
   border-radius: 6px;
   padding: 4px 10px;
   background: transparent;
-  color: #344054;
+  color: var(--ui-ink-secondary);
   font-size: 12px;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .week-btn:hover:not(:disabled) {
-  background: #fff;
-  color: #1d4ed8;
-  box-shadow: 0 3px 9px rgba(30, 64, 110, 0.1);
+  background: var(--ui-hover-bg);
+  color: var(--ui-primary-text-strong);
+  box-shadow: var(--ui-shadow-control);
   transform: translateY(-1px);
 }
 
@@ -1349,9 +1373,9 @@ function closeCustomDialog() {
   grid-template-columns: repeat(2, 1fr);
   gap: 2px;
   padding: 2px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid var(--ui-grid-line);
   border-radius: 999px;
-  background: rgba(161, 182, 203, 0.396);
+  background: var(--ui-segment-bg);
 }
 
 .mode-indicator {
@@ -1361,8 +1385,8 @@ function closeCustomDialog() {
   left: 2px;
   width: calc(50% - 3px);
   border-radius: 999px;
-  background: #fff;
-  box-shadow: 0 2px 6px rgba(30, 64, 110, 0.16);
+  background: var(--ui-segment-thumb);
+  box-shadow: var(--ui-shadow-tight);
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -1379,7 +1403,7 @@ function closeCustomDialog() {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: #5b6b7f;
+  color: var(--ui-segment-ink);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -1387,7 +1411,7 @@ function closeCustomDialog() {
 }
 
 .mode-btn.active {
-  color: #1d4ed8;
+  color: var(--ui-segment-active-ink);
 }
 
 .weekly-grid {
@@ -1408,8 +1432,8 @@ function closeCustomDialog() {
 .grid-period,
 .grid-cell {
   min-width: 0;
-  border-bottom: 1px solid #e2e8f0;
-  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ui-grid-line);
+  border-right: 1px solid var(--ui-grid-line);
 }
 
 .grid-day {
@@ -1422,15 +1446,15 @@ function closeCustomDialog() {
   justify-content: center;
   gap: 1px;
   padding: 5px 0;
-  color: #1d3b68;
-  box-shadow: inset 0 -1px 0 rgba(148, 163, 184, 0.22);
+  color: var(--ui-course-ink);
+  box-shadow: inset 0 -1px 0 var(--ui-border-control);
 }
 
 /* 表头（月份/星期/节次）统一为「主信息 + 次信息」两行结构，纯色平铺背景 */
 .grid-corner,
 .grid-day,
 .grid-period {
-  background: #f8fafc;
+  background: var(--ui-surface-muted);
 }
 
 .grid-corner {
@@ -1445,33 +1469,33 @@ function closeCustomDialog() {
 .corner-month {
   font-size: 12px;
   font-weight: 700;
-  color: #64748b;
+  color: var(--ui-muted-2);
 }
 
 .day-name {
   font-size: 11px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--ui-muted-2);
 }
 
 .day-date {
   font-size: 15px;
   font-weight: 700;
   line-height: 1.3;
-  color: #1d3b68;
+  color: var(--ui-course-ink);
 }
 
 .grid-day-today {
-  background: #eff6ff;
+  background: var(--ui-today-bg);
 }
 
 .grid-day-today .day-name {
-  color: #1d4ed8;
+  color: var(--ui-primary-text-strong);
 }
 
 .grid-day-today .day-date {
-  color: #fff;
-  background: #2563eb;
+  color: var(--ui-on-accent);
+  background: var(--ui-primary);
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -1488,44 +1512,44 @@ function closeCustomDialog() {
   justify-content: center;
   gap: 1px;
   padding: 4px 2px;
-  color: #344054;
+  color: var(--ui-ink-secondary);
 }
 
 .period-number {
   font-size: 12px;
   font-weight: 700;
-  color: #334155;
+  color: var(--ui-ink-secondary);
 }
 
 .period-time {
   font-size: 10px;
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--ui-muted-4);
   white-space: nowrap;
 }
 
 .grid-cell {
-  background: #fff;
+  background: var(--ui-surface-solid);
   transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .grid-cell-today {
-  background: #eff6ff;
+  background: var(--ui-today-bg);
 }
 
 /* 悬停：淡淡的内阴影提示当前格子 */
 .grid-cell.cell-hovered {
-  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.18);
+  box-shadow: inset 0 0 0 2px var(--ui-focus-ring-soft);
 }
 
 /* 框选/选中：半透明蓝色覆盖 + 内描边 */
 .grid-cell.cell-selected {
-  background: rgba(37, 99, 235, 0.12);
-  box-shadow: inset 0 0 0 1.5px rgba(37, 99, 235, 0.32);
+  background: var(--ui-focus-ring-soft);
+  box-shadow: inset 0 0 0 1.5px var(--ui-focus-ring);
 }
 
 .course-card-today {
-  border-color: #2563eb;
+  border-color: var(--ui-primary);
   box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
 }
 
@@ -1542,11 +1566,11 @@ function closeCustomDialog() {
 }
 
 .motion-disabled .course-card:hover {
-  box-shadow: 0 12px 24px rgba(30, 64, 110, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  box-shadow: var(--ui-shadow-card-hover);
 }
 
 .motion-disabled .exam-card:hover {
-  box-shadow: 0 12px 24px rgba(180, 83, 9, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: var(--ui-shadow-exam-hover);
 }
 
 .motion-disabled .course-copy-btn,
@@ -1560,16 +1584,16 @@ function closeCustomDialog() {
   min-width: 0;
   margin: 4px;
   padding: 8px 9px 8px 11px;
-  border: 1px solid #f59e0b;
-  border-left: 4px solid #ea580c;
+  border: 1px solid var(--ui-exam-border);
+  border-left: 4px solid var(--ui-exam-border-left);
   border-radius: 8px;
-  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
-  color: #7c2d12;
+  background: var(--ui-exam-bg);
+  color: var(--ui-exam-ink);
   font-size: 12px;
   line-height: 1.45;
   overflow: hidden;
   container-type: size;
-  box-shadow: 0 6px 14px rgba(180, 83, 9, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: var(--ui-shadow-exam);
   animation: course-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   transition: transform 0.22s ease, box-shadow 0.22s ease, filter 0.22s ease;
 }
@@ -1578,7 +1602,7 @@ function closeCustomDialog() {
   z-index: 6;
   transform: translateY(-3px) scale(1.015);
   filter: saturate(1.08);
-  box-shadow: 0 12px 24px rgba(180, 83, 9, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: var(--ui-shadow-exam-hover);
 }
 
 .exam-card:hover .exam-copy-btn {
@@ -1590,7 +1614,7 @@ function closeCustomDialog() {
   align-items: center;
   gap: 4px;
   margin-bottom: 2px;
-  color: #c2410c;
+  color: var(--ui-exam-kicker);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -1602,7 +1626,7 @@ function closeCustomDialog() {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #ea580c;
+  background: var(--ui-exam-mark);
   box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.14);
 }
 
@@ -1618,7 +1642,7 @@ function closeCustomDialog() {
 }
 
 .exam-meta {
-  color: #9a3412;
+  color: var(--ui-exam-meta);
 }
 
 .exam-meta-location,
@@ -1627,12 +1651,12 @@ function closeCustomDialog() {
 }
 
 .exam-meta-extra {
-  color: #b45309;
+  color: var(--ui-exam-extra);
 }
 
 .exam-time {
   margin-top: 2px;
-  color: #b45309;
+  color: var(--ui-exam-extra);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.35;
@@ -1646,8 +1670,8 @@ function closeCustomDialog() {
 }
 
 .exam-copy-btn:hover {
-  background: #d97706;
-  border-color: #d97706;
+  background: var(--ui-exam-btn-hover);
+  border-color: var(--ui-exam-btn-hover);
 }
 
 .course-card {
@@ -1657,12 +1681,12 @@ function closeCustomDialog() {
   padding: 8px 9px;
   border-radius: 8px;
   border: 1px solid transparent;
-  color: #1d3b68;
+  color: var(--ui-course-ink);
   font-size: 12px;
   line-height: 1.45;
   overflow: hidden;
   container-type: size;
-  box-shadow: 0 5px 12px rgba(30, 64, 110, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.44);
+  box-shadow: var(--ui-shadow-card);
   animation: course-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
   transition: transform 0.22s ease, box-shadow 0.22s ease, filter 0.22s ease;
 }
@@ -1698,23 +1722,23 @@ function closeCustomDialog() {
   z-index: 5;
   transform: translateY(-3px) scale(1.015);
   filter: saturate(1.08);
-  box-shadow: 0 12px 24px rgba(30, 64, 110, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  box-shadow: var(--ui-shadow-card-hover);
 }
 
-.course-card-blue { background: #dbeafe; border-color: #93c5fd; }
-.course-card-violet { background: #ede9fe; border-color: #c4b5fd; color: #43316e; }
-.course-card-teal { background: #ccfbf1; border-color: #5eead4; color: #145b58; }
-.course-card-amber { background: #fef3c7; border-color: #fcd34d; color: #704b0b; }
-.course-card-rose { background: #ffe4e6; border-color: #fda4af; color: #753044; }
-.course-card-indigo { background: #e0e7ff; border-color: #a5b4fc; color: #303d79; }
-.course-card-cyan { background: #cffafe; border-color: #67e8f9; color: #155e75; }
-.course-card-lime { background: #ecfccb; border-color: #bef264; color: #3f6212; }
-.course-card-orange { background: #ffedd5; border-color: #fdba74; color: #7c2d12; }
-.course-card-fuchsia { background: #fae8ff; border-color: #e879f9; color: #701a75; }
-.course-card-sky { background: #e0f2fe; border-color: #7dd3fc; color: #075985; }
-.course-card-emerald { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
-.course-card-pink { background: #fce7f3; border-color: #f9a8d4; color: #831843; }
-.course-card-slate { background: #e2e8f0; border-color: #94a3b8; color: #334155; }
+.course-card-blue { background: var(--ui-tone-blue-bg); border-color: var(--ui-tone-blue-border); color: var(--ui-tone-blue-ink); }
+.course-card-violet { background: var(--ui-tone-violet-bg); border-color: var(--ui-tone-violet-border); color: var(--ui-tone-violet-ink); }
+.course-card-teal { background: var(--ui-tone-teal-bg); border-color: var(--ui-tone-teal-border); color: var(--ui-tone-teal-ink); }
+.course-card-amber { background: var(--ui-tone-amber-bg); border-color: var(--ui-tone-amber-border); color: var(--ui-tone-amber-ink); }
+.course-card-rose { background: var(--ui-tone-rose-bg); border-color: var(--ui-tone-rose-border); color: var(--ui-tone-rose-ink); }
+.course-card-indigo { background: var(--ui-tone-indigo-bg); border-color: var(--ui-tone-indigo-border); color: var(--ui-tone-indigo-ink); }
+.course-card-cyan { background: var(--ui-tone-cyan-bg); border-color: var(--ui-tone-cyan-border); color: var(--ui-tone-cyan-ink); }
+.course-card-lime { background: var(--ui-tone-lime-bg); border-color: var(--ui-tone-lime-border); color: var(--ui-tone-lime-ink); }
+.course-card-orange { background: var(--ui-tone-orange-bg); border-color: var(--ui-tone-orange-border); color: var(--ui-tone-orange-ink); }
+.course-card-fuchsia { background: var(--ui-tone-fuchsia-bg); border-color: var(--ui-tone-fuchsia-border); color: var(--ui-tone-fuchsia-ink); }
+.course-card-sky { background: var(--ui-tone-sky-bg); border-color: var(--ui-tone-sky-border); color: var(--ui-tone-sky-ink); }
+.course-card-emerald { background: var(--ui-tone-emerald-bg); border-color: var(--ui-tone-emerald-border); color: var(--ui-tone-emerald-ink); }
+.course-card-pink { background: var(--ui-tone-pink-bg); border-color: var(--ui-tone-pink-border); color: var(--ui-tone-pink-ink); }
+.course-card-slate { background: var(--ui-tone-slate-bg); border-color: var(--ui-tone-slate-border); color: var(--ui-tone-slate-ink); }
 
 .course-name {
   font-weight: 700;
@@ -1725,7 +1749,7 @@ function closeCustomDialog() {
 
 .course-meta {
   font-size: 11px;
-  color: #344054;
+  color: var(--ui-ink-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1735,7 +1759,7 @@ function closeCustomDialog() {
   margin-top: 2px;
   font-size: 11px;
   font-weight: 600;
-  color: #2563eb;
+  color: var(--ui-primary-text);
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1751,10 +1775,10 @@ function closeCustomDialog() {
   height: 22px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(148, 163, 184, 0.5);
+  border: 1px solid var(--ui-border-control);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #475569;
+  background: var(--ui-glass-btn-bg);
+  color: var(--ui-glass-btn-ink);
   opacity: 0;
   cursor: pointer;
   transition: opacity 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
@@ -1765,17 +1789,17 @@ function closeCustomDialog() {
 }
 
 .course-copy-btn:hover {
-  background: #2563eb;
-  border-color: #2563eb;
-  color: #fff;
+  background: var(--ui-primary);
+  border-color: var(--ui-primary);
+  color: var(--ui-on-accent);
   transform: translateY(-1px);
 }
 
 .course-copy-btn.copied {
   opacity: 1;
-  background: #15803d;
-  border-color: #15803d;
-  color: #fff;
+  background: var(--ui-success);
+  border-color: var(--ui-success);
+  color: var(--ui-on-accent);
 }
 
 .course-copy-btn svg {
@@ -1792,8 +1816,8 @@ function closeCustomDialog() {
   gap: 8px;
   padding: 14px;
   border-radius: 10px;
-  background: #f7f9fc;
-  color: #344054;
+  background: var(--ui-surface-muted);
+  color: var(--ui-ink-secondary);
   font-size: 13px;
 }
 
@@ -1804,7 +1828,7 @@ function closeCustomDialog() {
   scrollbar-width: none;
   white-space: pre-wrap;
   word-break: break-word;
-  color: #102033;
+  color: var(--ui-ink);
 }
 
 .empty-state pre::-webkit-scrollbar {
@@ -1825,18 +1849,18 @@ function closeCustomDialog() {
   height: 46px;
   display: grid;
   place-items: center;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
-  color: #2563eb;
+  background: var(--ui-glass-btn-bg);
+  color: var(--ui-primary-text);
   cursor: pointer;
-  box-shadow: 0 8px 20px rgba(30, 64, 110, 0.14);
+  box-shadow: var(--ui-shadow-control);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .fab:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 12px 26px rgba(30, 64, 110, 0.2);
+  box-shadow: var(--ui-shadow-control-hover);
 }
 
 .fab:disabled {
@@ -1863,10 +1887,10 @@ function closeCustomDialog() {
   min-width: 180px;
   max-width: 260px;
   padding: 10px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border: 1px solid var(--ui-border-control);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 12px 30px rgba(30, 64, 110, 0.18);
+  background: var(--ui-surface-raised);
+  box-shadow: var(--ui-shadow-float);
   pointer-events: none;
   backdrop-filter: blur(8px);
 }
@@ -1874,7 +1898,7 @@ function closeCustomDialog() {
 .course-tooltip-name {
   font-size: 13px;
   font-weight: 700;
-  color: #102033;
+  color: var(--ui-ink);
   line-height: 1.45;
   word-break: break-all;
   margin-bottom: 6px;
@@ -1885,7 +1909,7 @@ function closeCustomDialog() {
   align-items: baseline;
   gap: 8px;
   font-size: 12px;
-  color: #344054;
+  color: var(--ui-ink-secondary);
   line-height: 1.6;
 }
 
@@ -1894,7 +1918,7 @@ function closeCustomDialog() {
   min-width: 32px;
   font-size: 11px;
   font-weight: 600;
-  color: #2563eb;
+  color: var(--ui-primary-text);
 }
 
 .tooltip-enter-active,
@@ -1943,7 +1967,7 @@ function closeCustomDialog() {
 .schedule-layout-compact .corner-month {
   font-size: 11px;
   font-weight: 700;
-  color: #000000;
+  color: var(--ui-ink);
 }
 
 .schedule-layout-compact .grid-day {
@@ -2009,11 +2033,11 @@ function closeCustomDialog() {
 .schedule-layout-compact .exam-card {
   margin: 1px;
   padding: 5px 3px 5px 3px;
-  border: 1px solid #ff0000;
-  border-left: 3px solid #ff0000;
+  border: 1px solid var(--ui-exam-compact-border);
+  border-left: 3px solid var(--ui-exam-compact-border);
   border-radius: 6px;
-  background: #903424;
-  color: #fff;
+  background: var(--ui-exam-compact-bg);
+  color: var(--ui-on-accent);
   font-size: 12px;
   line-height: 1.3;
   box-shadow: none;
@@ -2046,7 +2070,7 @@ function closeCustomDialog() {
   text-align: center;
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
+  color: var(--ui-on-accent);
 }
 
 .schedule-layout-compact .course-copy-btn,

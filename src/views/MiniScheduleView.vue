@@ -22,6 +22,13 @@ function handleChangeTerm(term: string) {
 onMounted(() => {
   // 迷你窗口：从缓存课表立即展示，后台静默恢复会话并刷新数据
   if (auth.loggedIn) void auth.startupAutoLogin()
+
+  // 迷你窗只隐藏、不销毁，"重新显示"不会再触发 onMounted，因此由 Rust 在显示时发事件通知：
+  // 同步主窗写入的缓存（课表与展示周），并按需刷新（超过刷新间隔才真的拉数据）
+  window.electronAPI?.onMiniShown(() => {
+    auth.syncFromCache()
+    auth.refreshIfStale()
+  })
 })
 </script>
 

@@ -7,6 +7,7 @@ import { ref } from 'vue'
 import { recognizeCaptchaFromUrl } from '../utils/captcha'
 import { fzuApi } from '../api/fzu'
 import { getErrorMessage } from '../utils/errors'
+import { requestCenterState } from '../utils/requestCenter'
 import {
   readStoredString,
   readStoredValue,
@@ -14,11 +15,14 @@ import {
   writeStoredString,
   writeStoredValue,
 } from '../utils/storage'
+import { applyTheme, type ThemePreference } from '../utils/theme'
 import type { CourseResult, ExamResult, ProfileInfo, SchoolCalendar } from '../types/fzu'
 
 // 主动退出标记由主进程持久化（auth:set-explicit-logout IPC），启动时据此决定直接打开主窗口还是登录窗
 
 interface UISettings {
+  // 主题偏好：默认跟随系统
+  theme: ThemePreference
   courseCardMotion: boolean
   // 启动时记忆窗口：默认开启，重启后恢复上次窗口模式（小窗/大窗）
   windowMemory: boolean
@@ -27,9 +31,15 @@ interface UISettings {
 // UI 设置缓存
 const UI_SETTINGS_CACHE_KEY = 'fzu_ui_settings'
 
+// 兼容旧缓存与脏数据：非法取值一律回落到“跟随系统”
+function readThemePreference(value: unknown): ThemePreference {
+  return value === 'light' || value === 'dark' ? value : 'system'
+}
+
 function readUISettings(): UISettings {
   const stored = readStoredValue<Partial<UISettings> | null>(UI_SETTINGS_CACHE_KEY, null)
   return {
+    theme: readThemePreference(stored?.theme),
     courseCardMotion: stored?.courseCardMotion ?? false,
     windowMemory: stored?.windowMemory ?? true,
   }
@@ -45,6 +55,9 @@ const AUTH_SESSION_KEY = 'fzu_auth_session'
 const SCHOOL_CALENDAR_TTL = 7 * 24 * 60 * 60 * 1000
 // 静默重新登录重试次数：验证码模板匹配识别偶有误差，给足重试机会
 const SILENT_RELOGIN_ATTEMPTS = 3
+// "重新显示窗口"这类触发点的刷新节流：该窗口操作会频繁触发焦点事件，
+// 若不节流每次交互都会打一整轮教务请求（week.asp + 模块访问 + 课表 + 考表）
+const STALE_REFRESH_MS = 5 * 60 * 1000
 
 interface SchoolCalendarCache {
   savedAt: number
@@ -96,9 +109,13 @@ export const useAuthStore = defineStore('auth', () => {
   const currentWeek = ref<number | null>(courseCache?.currentWeek ?? null)
   const schoolCalendar = ref<SchoolCalendar | null>(readSchoolCalendarCache()?.data || null)
   const selectedTerm = ref<string | null>(courseCache?.selectedTerm ?? null)
-  // 当前展示周：记录用户看到的周数，缩放小窗/重启后继承
+  // 当前展示周：记录用户看到的周数，供同一会话内的另一窗口（缩放小窗）继承；
+  // 应用重启后由"第一个窗口"重新定位到本周，不沿用这里的值
   const courseWeek = ref<number | null>(courseCache?.courseWeek ?? null)
   const uiSettings = ref<UISettings>(readUISettings())
+  // 本次启动的第一个窗口：课表据此定位到本周；之后创建的窗口继承当前展示周。
+  // 由 main.ts 在挂载前根据 window_count 写入
+  const sessionFirstWindow = ref(false)
   const toastMessage = ref('')
   const toastType = ref<'success' | 'error' | 'info'>('info')
   // 静默重新登录进行中标记：避免心跳/课表请求并发触发重复登录
@@ -140,6 +157,24 @@ export const useAuthStore = defineStore('auth', () => {
     writeUISettings(uiSettings.value)
   }
 
+  // 主题偏好：持久化后立即把解析结果写到 <html data-theme>（CSS 只认该属性），
+  // 并广播给另一窗口——主题存在 localStorage，每个窗口各有一份 store，
+  // 不同步的话隐藏中的窗口会停留在旧主题，重新显示时云母与页面对不上
+  function setTheme(theme: ThemePreference) {
+    uiSettings.value = { ...uiSettings.value, theme }
+    writeUISettings(uiSettings.value)
+    applyTheme(theme)
+    window.electronAPI?.notifyThemeChanged(theme)
+  }
+
+  // 收到另一窗口广播的主题：只更新本地状态并应用，不再广播（避免两个窗口来回弹）
+  function applyRemoteTheme(theme: string) {
+    const preference = readThemePreference(theme)
+    if (uiSettings.value.theme === preference) return
+    uiSettings.value = { ...uiSettings.value, theme: preference }
+    applyTheme(preference)
+  }
+
   // 启动时记忆窗口开关：本地持久化 + 同步主进程（启动时由主进程决定开大窗还是小窗）
   function setWindowMemory(enabled: boolean) {
     uiSettings.value = { ...uiSettings.value, windowMemory: enabled }
@@ -160,10 +195,41 @@ export const useAuthStore = defineStore('auth', () => {
     })
   }
 
-  // 记录当前展示周（大窗/小窗切换周时调用），并持久化供另一窗口继承
+  // 从本地缓存重新同步课表状态。
+  // 主窗与迷你窗是两个独立的 Pinia 实例、各自只在创建时读一次缓存；迷你窗改成
+  // "只隐藏不销毁"之后，重新显示时需要主动把另一窗口写入的缓存（课表、展示周）拉回来
+  function syncFromCache() {
+    if (!username.value) return
+    const cached = readCourseCache(username.value)
+    if (!cached) return
+    courseResult.value = cached.courseResult
+    examResult.value = cached.examResult
+    currentWeek.value = cached.currentWeek
+    selectedTerm.value = cached.selectedTerm
+    courseWeek.value = cached.courseWeek
+  }
+
+  // 记录当前展示周（大窗/小窗切换周时调用）：写入缓存供另一窗口继承，
+  // 并广播出去，让隐藏着的另一窗口也立即跟着切换
   function setCourseWeek(week: number) {
+    const changed = courseWeek.value !== week
     courseWeek.value = week
     persistCourseCache()
+    if (changed) window.electronAPI?.notifyWeekChanged(week)
+  }
+
+  // 收到另一窗口广播的展示周：只更新本地状态，不再广播（避免两个窗口来回弹）
+  function applyRemoteWeek(week: number) {
+    courseWeek.value = week
+  }
+
+  // 距离上次成功请求超过 intervalMs 才静默刷新。
+  // 给"窗口重新显示"这类触发点用：焦点事件在窗口里操作时会反复触发，
+  // 不节流的话每次交互都会打一整轮教务请求
+  function refreshIfStale(intervalMs = STALE_REFRESH_MS) {
+    if (!loggedIn.value) return
+    if (Date.now() - requestCenterState.lastSuccessAt < intervalMs) return
+    void fetchCoursePage(true)
   }
 
   // 登录成功后的统一收尾：写入本地登录态、清除主动退出标记、拉取课表
@@ -404,7 +470,13 @@ export const useAuthStore = defineStore('auth', () => {
     selectedTerm,
     courseWeek,
     setCourseWeek,
+    applyRemoteWeek,
+    refreshIfStale,
+    syncFromCache,
+    sessionFirstWindow,
     uiSettings,
+    setTheme,
+    applyRemoteTheme,
     setCourseCardMotion,
     setWindowMemory,
     toastMessage,

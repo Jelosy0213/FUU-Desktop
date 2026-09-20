@@ -86,7 +86,7 @@ const noReminder = ref(false)
   z-index: 200;
   display: grid;
   place-items: center;
-  background: rgba(16, 32, 51, 0.45);
+  background: var(--ui-overlay);
   backdrop-filter: blur(2px);
 }
 
@@ -97,10 +97,10 @@ const noReminder = ref(false)
   display: flex;
   flex-direction: column;
   padding: 28px 32px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 24px 60px rgba(16, 32, 51, 0.28);
+  background: var(--ui-surface-solid);
+  box-shadow: var(--ui-shadow-modal);
   box-sizing: border-box;
 }
 
@@ -128,14 +128,14 @@ const noReminder = ref(false)
   margin: 0;
   font-size: 20px;
   font-weight: 800;
-  color: #102033;
+  color: var(--ui-ink);
 }
 
 .update-badge {
   padding: 2px 10px;
   border-radius: 999px;
-  background: #e3edfd;
-  color: #1d4ed8;
+  background: var(--ui-active-bg);
+  color: var(--ui-primary-text-strong);
   font-size: 12px;
   font-weight: 700;
 }
@@ -146,7 +146,7 @@ const noReminder = ref(false)
   display: flex;
   flex-direction: column;
   margin-top: 20px;
-  border-top: 1px solid #edf2f9;
+  border-top: 1px solid var(--ui-border-faint);
   padding-top: 18px;
 }
 
@@ -155,19 +155,19 @@ const noReminder = ref(false)
   align-items: center;
   gap: 10px;
   font-size: 13px;
-  color: #56708d;
+  color: var(--ui-muted);
 }
 
 .update-version-line strong {
-  color: #102033;
+  color: var(--ui-ink);
 }
 
 .update-version-line .new-version {
-  color: #1d4ed8;
+  color: var(--ui-primary-text-strong);
 }
 
 .version-arrow {
-  color: #94a3b8;
+  color: var(--ui-muted-4);
 }
 
 .update-notes {
@@ -175,9 +175,9 @@ const noReminder = ref(false)
   min-height: 0;
   margin-top: 16px;
   padding: 14px 16px;
-  border: 1px solid #edf2f9;
+  border: 1px solid var(--ui-border-faint);
   border-radius: 12px;
-  background: #f8fafd;
+  background: var(--ui-surface-muted);
   overflow-y: auto;
 }
 
@@ -185,14 +185,14 @@ const noReminder = ref(false)
   margin: 0 0 8px;
   font-size: 13px;
   font-weight: 700;
-  color: #102033;
+  color: var(--ui-ink);
 }
 
 .update-notes p {
   margin: 0;
   font-size: 13px;
   line-height: 1.7;
-  color: #344054;
+  color: var(--ui-ink-secondary);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -205,14 +205,14 @@ const noReminder = ref(false)
 .progress-track {
   height: 10px;
   border-radius: 999px;
-  background: #e5edf7;
+  background: var(--ui-switch-track);
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+  background: linear-gradient(90deg, var(--ui-primary), var(--ui-primary-strong));
   transition: width 0.15s ease;
 }
 
@@ -220,7 +220,7 @@ const noReminder = ref(false)
   display: block;
   margin-top: 8px;
   font-size: 12px;
-  color: #56708d;
+  color: var(--ui-muted);
   text-align: center;
 }
 
@@ -228,8 +228,8 @@ const noReminder = ref(false)
   margin-top: auto;
   padding: 14px 16px;
   border-radius: 12px;
-  background: #eef7f0;
-  color: #15803d;
+  background: var(--ui-success-soft);
+  color: var(--ui-success-text);
   font-size: 13px;
   line-height: 1.6;
   word-break: break-all;
@@ -237,7 +237,7 @@ const noReminder = ref(false)
 
 .update-error {
   margin: 12px 0 0;
-  color: #c0362c;
+  color: var(--ui-danger-text);
   font-size: 13px;
 }
 
@@ -248,7 +248,7 @@ const noReminder = ref(false)
   gap: 12px;
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid #edf2f9;
+  border-top: 1px solid var(--ui-border-faint);
 }
 
 .no-reminder {
@@ -256,13 +256,13 @@ const noReminder = ref(false)
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #56708d;
+  color: var(--ui-muted);
   cursor: pointer;
   user-select: none;
 }
 
 .no-reminder input {
-  accent-color: #2563eb;
+  accent-color: var(--ui-primary);
 }
 
 .update-actions {
@@ -286,22 +286,22 @@ const noReminder = ref(false)
 }
 
 .btn-later {
-  border: 1px solid #dbe3ee;
-  background: #fff;
-  color: #56708d;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-solid);
+  color: var(--ui-muted);
 }
 
 .btn-later:hover:not(:disabled) {
-  background: #f2f6fc;
+  background: var(--ui-chrome-bg);
 }
 
 .btn-update {
   border: 0;
-  background: #2563eb;
-  color: #fff;
+  background: var(--ui-primary);
+  color: var(--ui-on-accent);
 }
 
 .btn-update:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--ui-primary-strong);
 }
 </style>

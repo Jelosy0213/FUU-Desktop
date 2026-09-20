@@ -5,6 +5,23 @@
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FZUHelper</title>
+    <script>
+      // 首屏渲染前定主题：否则系统处于深色时会先画一帧浅色再切深色，出现闪白。
+      // 偏好存在 fzu_ui_settings（键名与 src/stores/auth.ts 一致），
+      // "system" 档的运行期跟随由 src/utils/theme.ts 负责。
+      (function () {
+        var preference = 'system'
+        try {
+          preference = JSON.parse(localStorage.getItem('fzu_ui_settings') || '{}').theme || 'system'
+        } catch {
+          preference = 'system'
+        }
+        var dark =
+          preference === 'dark' ||
+          (preference !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

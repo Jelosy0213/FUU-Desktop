@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Jelosy
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * 全局样式入口：按「字体 → 令牌 → 重置 → 组件类」分层加载。
+ * 全局样式入口：按「字体 → 令牌 → 重置 → 组件类 → 背景材质」分层加载。
  * 业务代码只 import 本文件，不要直接引用下面各层。
  */
 
@@ -10,3 +10,4 @@
 @import './tokens.css';
 @import './reset.css';
 @import './ui.css';
+@import './backdrop.css';

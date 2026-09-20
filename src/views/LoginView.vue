@@ -204,12 +204,12 @@ onMounted(async () => {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #2563eb;
+  color: var(--ui-primary-text);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #5b6b7f;
+  color: var(--ui-muted);
 }
 
 .form {
@@ -221,14 +221,14 @@ onMounted(async () => {
 .field {
   display: grid;
   gap: 8px;
-  color: #344054;
+  color: var(--ui-ink-secondary);
   font-size: 14px;
   font-weight: 500;
 }
 
 .field input {
   --input-border-width: 2px;
-  --input-border-color: #cfd8e3;
+  --input-border-color: var(--ui-border-input);
   width: 100%;
   min-width: 0;
   border: var(--input-border-width) solid var(--input-border-color);
@@ -236,23 +236,23 @@ onMounted(async () => {
   padding: 12px 14px;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
-  background: #fff;
+  background: var(--ui-surface-solid);
   font-weight: 500;
   user-select: text;
 }
 
 .field input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 3px var(--ui-focus-ring-soft);
 }
 
 .field input::selection {
-  background: #e5e7eb;
+  background: var(--ui-selection-bg);
   color: inherit;
 }
 
 .field input::-moz-selection {
-  background: #e5e7eb;
+  background: var(--ui-selection-bg);
   color: inherit;
 }
 
@@ -271,17 +271,17 @@ onMounted(async () => {
   bottom: 3px;
   width: 106px;
   border: 0;
-  border-left: 1px solid #cfd8e3;
+  border-left: 1px solid var(--ui-border-input);
   border-radius: 0 8px 8px 0;
   padding: 4px 6px;
-  background: #f8fafc;
+  background: var(--ui-surface-muted);
   overflow: hidden;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
 .captcha-btn:hover {
-  background: #edf4ff;
+  background: var(--ui-hover-soft);
 }
 
 .captcha-btn img {
@@ -296,8 +296,8 @@ onMounted(async () => {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.82);
-  color: #5b6b7f;
+  background: var(--ui-surface-raised);
+  color: var(--ui-muted);
   font-size: 13px;
   font-weight: 500;
 }
@@ -314,10 +314,10 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 7px 14px;
-  border: 2px solid #bfd9fd;
+  border: 2px solid var(--ui-primary-border-soft);
   border-radius: 999px;
-  background: #f8fafc;
-  color: #323c49;
+  background: var(--ui-surface-muted);
+  color: var(--ui-ink-secondary);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -328,7 +328,7 @@ onMounted(async () => {
   border: 0;
   background: transparent;
   padding: 7px 2px;
-  color: #2563eb;
+  color: var(--ui-primary-text);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -336,19 +336,19 @@ onMounted(async () => {
 }
 
 .forgot-btn:hover {
-  color: #1d4ed8;
+  color: var(--ui-primary-text-strong);
   text-decoration: underline;
 }
 
 .remember-field:hover {
-  border-color: #93c5fd;
-  color: #2563eb;
+  border-color: var(--ui-primary-border);
+  color: var(--ui-primary-text);
 }
 
 .remember-field.selected {
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #fff;
+  border-color: var(--ui-primary);
+  background: var(--ui-primary);
+  color: var(--ui-on-accent);
 }
 
 .remember-field:active {
@@ -365,7 +365,7 @@ onMounted(async () => {
 }
 
 .remember-field.selected .remember-dot {
-  background: #fff;
+  background: var(--ui-on-accent);
   opacity: 1;
 }
 
@@ -375,8 +375,8 @@ onMounted(async () => {
   padding: 12px 16px;
   cursor: pointer;
   transition: transform 0.12s ease, opacity 0.12s ease;
-  background: #2563eb;
-  color: #fff;
+  background: var(--ui-primary);
+  color: var(--ui-on-accent);
 }
 
 .primary-btn:disabled {
@@ -391,7 +391,7 @@ onMounted(async () => {
 
 .error {
   margin: 0;
-  color: #c0362c;
+  color: var(--ui-danger-text);
   font-size: 14px;
 }
 

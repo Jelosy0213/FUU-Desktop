@@ -5,41 +5,349 @@
  * 设计令牌：颜色、圆角、阴影、动效时长等所有视觉常量集中在此。
  * 组件样式一律通过 var(--ui-*) 引用，不要在组件内写死色值，
  * 后续加主题（深色模式、列表密度等）只需在此扩展。
+ *
+ * 主题：由 <html data-theme="light|dark"> 决定，取值在设置页里可选
+ * （系统 / 浅色 / 深色，"系统"会跟随系统主题实时切换）。
+ * 组件里不要写主题专用样式——只在此处覆盖同名令牌即可。
  */
 
 :root {
+  /* 让原生控件（滚动条、输入框、下拉菜单等）跟随当前主题 */
+  color-scheme: light;
+
   /* 拉丁字形用 Segoe UI；中文优先思源黑体（Noto Sans SC 与 Source Han Sans SC 是同一字体的
      两种命名，覆盖 Google / Adobe 两个发行版），未安装时回退到微软雅黑。
      不随包分发字体文件，避免安装包被 CJK 字体体积撑大 */
   --ui-font-sans: 'Segoe UI', 'Noto Sans SC', 'Source Han Sans SC', '思源黑体', 'Noto Sans CJK SC',
     'Microsoft YaHei', 'PingFang SC', sans-serif;
 
-  /* 背景与文字 */
-  --ui-bg: #f4f7fb;
-  --ui-ink: #102033;
-  --ui-ink-strong: #0f2742;
-  --ui-muted: #5b6b7f;
+  /* ===== 背景与文字 ===== */
+  --ui-bg: #f4f7fb; /* 页面底色 */
+  --ui-chrome-bg: #f2f6fc; /* 顶栏 / 侧边导航 / 内容框架底色 */
+  --ui-ink: #102033; /* 主文字 */
+  --ui-ink-strong: #0f2742; /* 强调文字（标题） */
+  --ui-ink-secondary: #344054; /* 次级文字 */
+  --ui-muted: #5b6b7f; /* 弱化文字 */
+  --ui-muted-2: #64748b; /* 更弱：图标 / 占位 / 下拉箭头 */
+  --ui-muted-3: #8296ab; /* 提示文字 */
+  --ui-muted-4: #94a3b8; /* 最弱：时间 / 角标 */
 
-  /* 主色 */
-  --ui-primary: #2563eb;
-  --ui-primary-strong: #1d4ed8;
+  /* ===== 主色 ===== */
+  --ui-primary: #2563eb; /* 填充按钮底色 */
+  --ui-primary-strong: #1d4ed8; /* 填充按钮悬停 */
+  --ui-primary-text: #2563eb; /* 主色文字 / 图标 */
+  --ui-primary-text-strong: #1d4ed8; /* 主色文字悬停 / 选中 */
+  --ui-primary-soft: #e3edfd; /* 主色浅底：选中胶囊 */
+  --ui-primary-softer: #eef4fc; /* 主色更浅底：悬停 */
+  --ui-primary-border: #93c5fd; /* 主色描边 */
+  --ui-primary-border-soft: #bfd9fd; /* 主色浅描边 */
 
-  /* 边框与表面 */
-  --ui-border: #dbe3ee;
-  --ui-border-soft: rgba(203, 216, 235, 0.9);
+  /* ===== 表面与边框 ===== */
   --ui-surface: rgba(255, 255, 255, 0.86);
   --ui-surface-solid: #ffffff;
+  --ui-surface-muted: #f8fafc; /* 次级底色：表头 / 浅色卡片 / 输入框 */
+  --ui-surface-translucent: rgba(255, 255, 255, 0.72);
+  --ui-surface-raised: rgba(255, 255, 255, 0.98); /* 浮层 / 下拉 / 覆盖层 */
+  --ui-border: #dbe3ee;
+  --ui-border-soft: rgba(203, 216, 235, 0.9);
+  --ui-border-faint: #edf2f9; /* 分隔线 */
+  --ui-border-control: rgba(148, 163, 184, 0.28); /* 按钮 / 控件描边 */
+  --ui-border-input: #cfd8e3; /* 输入框描边 */
+  --ui-grid-line: #e2e8f0; /* 课表网格线 */
 
-  /* 圆角 */
+  /* ===== 交互底色 ===== */
+  --ui-hover-bg: #ffffff; /* 悬停 / 选中的实底 */
+  --ui-hover-soft: #eef4fc; /* 悬停的浅色底 */
+  --ui-active-bg: #e3edfd; /* 选中态底色 */
+  --ui-today-bg: #eff6ff; /* 课表"今天"列底色 */
+  --ui-segment-bg: rgba(161, 182, 203, 0.4); /* 分段控件轨道 */
+  --ui-segment-ink: #4f5e70; /* 分段控件未选中项文字：要压在浅色轨道上，不能太浅 */
+  --ui-segment-thumb: #ffffff; /* 分段控件滑块 */
+  --ui-segment-active-ink: #1d4ed8; /* 分段控件选中项文字：浅色下用主色 */
+  --ui-selection-bg: #e5e7eb; /* 文本选中底色 */
+  --ui-placeholder-ink: #667085; /* 输入框占位文字：必须显式指定，原生默认色不随主题切换 */
+
+  /* ===== 语义色 ===== */
+  --ui-danger: #c0362c; /* 危险操作填充 */
+  --ui-danger-text: #c0362c; /* 危险提示文字 */
+  --ui-danger-soft: #fdeceb;
+  --ui-success: #15803d; /* 成功填充 */
+  --ui-success-text: #15803d; /* 成功提示文字 */
+  --ui-success-soft: #eef7f0;
+  --ui-on-accent: #ffffff; /* 主色 / 危险色之上的文字 */
+
+  /* ===== 控件与浮层 ===== */
+  --ui-switch-track: #cbd5e1;
+  --ui-switch-knob: #ffffff;
+  --ui-overlay: rgba(16, 32, 51, 0.45); /* 模态遮罩 */
+  --ui-toast-bg: #102033;
+  --ui-toast-ink: #ffffff;
+  --ui-glass-btn-bg: rgba(255, 255, 255, 0.92); /* 悬浮在卡片上的小按钮 */
+  --ui-glass-btn-ink: #475569;
+  --ui-placeholder-bg: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.72) 0%,
+    rgba(248, 250, 252, 0.88) 100%
+  );
+
+  /* ===== 云母（Mica）材质叠加层：仅 Win11 生效 =====
+     云母由 DWM 画在窗口后面，下面三个值只决定页面往上叠多少（见 backdrop.css），
+     取值对齐 WinUI 3 的层级配色：chrome 层 / 内容层 / 控件填充层 */
+  --ui-mica-chrome-bg: rgba(1, 1, 1, 0.01);
+  --ui-mica-content-bg: rgba(255, 255, 255, 0.5); /* WinUI 浅色 LayerFillColorDefault */
+  --ui-mica-pill-bg: rgba(255, 255, 255, 0.6);
+
+  /* ===== 焦点 ===== */
+  --ui-focus-color: #60a5fa;
+  --ui-focus-ring: rgba(96, 165, 250, 0.35);
+  --ui-focus-ring-soft: rgba(37, 99, 235, 0.14);
+
+  /* ===== 圆角 ===== */
   --ui-radius-sm: 8px;
   --ui-radius-md: 12px;
   --ui-radius-lg: 16px;
 
-  /* 阴影 */
+  /* ===== 阴影 ===== */
   --ui-shadow-panel: 0 24px 60px rgba(30, 64, 110, 0.11), 0 4px 12px rgba(30, 64, 110, 0.05);
   --ui-shadow-control: 0 5px 14px rgba(30, 64, 110, 0.07);
+  --ui-shadow-control-hover: 0 9px 20px rgba(30, 64, 110, 0.12);
+  --ui-shadow-soft: 0 6px 16px rgba(30, 64, 110, 0.06);
+  --ui-shadow-tight: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --ui-shadow-float: 0 18px 36px rgba(15, 23, 42, 0.14);
+  --ui-shadow-dialog: 0 18px 46px rgba(16, 32, 51, 0.22);
+  --ui-shadow-modal: 0 24px 60px rgba(16, 32, 51, 0.28);
+  --ui-shadow-toast: 0 12px 28px rgba(16, 32, 51, 0.16);
+  --ui-shadow-knob: 0 2px 5px rgba(30, 64, 110, 0.2);
+  --ui-shadow-card: 0 5px 12px rgba(30, 64, 110, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.44);
+  --ui-shadow-card-hover: 0 12px 24px rgba(30, 64, 110, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  --ui-shadow-exam: 0 6px 14px rgba(180, 83, 9, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --ui-shadow-exam-hover: 0 12px 24px rgba(180, 83, 9, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
 
-  /* 动效 */
+  /* ===== 动效 ===== */
   --ui-motion-fast: 0.2s ease;
   --ui-motion-enter: 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ===== 课表课程卡片色板（背景 / 描边 / 文字） ===== */
+  --ui-course-ink: #1d3b68;
+  --ui-tone-blue-bg: #dbeafe;
+  --ui-tone-blue-border: #93c5fd;
+  --ui-tone-blue-ink: #1d3b68;
+  --ui-tone-violet-bg: #ede9fe;
+  --ui-tone-violet-border: #c4b5fd;
+  --ui-tone-violet-ink: #43316e;
+  --ui-tone-teal-bg: #ccfbf1;
+  --ui-tone-teal-border: #5eead4;
+  --ui-tone-teal-ink: #145b58;
+  --ui-tone-amber-bg: #fef3c7;
+  --ui-tone-amber-border: #fcd34d;
+  --ui-tone-amber-ink: #704b0b;
+  --ui-tone-rose-bg: #ffe4e6;
+  --ui-tone-rose-border: #fda4af;
+  --ui-tone-rose-ink: #753044;
+  --ui-tone-indigo-bg: #e0e7ff;
+  --ui-tone-indigo-border: #a5b4fc;
+  --ui-tone-indigo-ink: #303d79;
+  --ui-tone-cyan-bg: #cffafe;
+  --ui-tone-cyan-border: #67e8f9;
+  --ui-tone-cyan-ink: #155e75;
+  --ui-tone-lime-bg: #ecfccb;
+  --ui-tone-lime-border: #bef264;
+  --ui-tone-lime-ink: #3f6212;
+  --ui-tone-orange-bg: #ffedd5;
+  --ui-tone-orange-border: #fdba74;
+  --ui-tone-orange-ink: #7c2d12;
+  --ui-tone-fuchsia-bg: #fae8ff;
+  --ui-tone-fuchsia-border: #e879f9;
+  --ui-tone-fuchsia-ink: #701a75;
+  --ui-tone-sky-bg: #e0f2fe;
+  --ui-tone-sky-border: #7dd3fc;
+  --ui-tone-sky-ink: #075985;
+  --ui-tone-emerald-bg: #d1fae5;
+  --ui-tone-emerald-border: #6ee7b7;
+  --ui-tone-emerald-ink: #065f46;
+  --ui-tone-pink-bg: #fce7f3;
+  --ui-tone-pink-border: #f9a8d4;
+  --ui-tone-pink-ink: #831843;
+  --ui-tone-slate-bg: #e2e8f0;
+  --ui-tone-slate-border: #94a3b8;
+  --ui-tone-slate-ink: #334155;
+
+  /* ===== 考试卡片 ===== */
+  --ui-exam-bg: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+  --ui-exam-border: #f59e0b;
+  --ui-exam-border-left: #ea580c;
+  --ui-exam-ink: #7c2d12;
+  --ui-exam-kicker: #c2410c;
+  --ui-exam-mark: #ea580c;
+  --ui-exam-meta: #9a3412;
+  --ui-exam-extra: #b45309;
+  --ui-exam-btn-hover: #d97706;
+  --ui-exam-compact-bg: #903424;
+  --ui-exam-compact-border: #ff0000;
+}
+
+/* ===== 深色主题：只覆盖颜色 / 阴影令牌 =====
+   <html data-theme="dark"> 时生效，属性由 utils/theme.ts 维护：
+   "系统"会解析成实际生效的 light/dark，并监听系统主题变化后重新写入。
+   index.html 的内联脚本负责在首屏渲染前写好该属性，避免深色系统下闪白。 */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* 背景与文字 */
+  --ui-bg: #0d1521;
+  --ui-chrome-bg: #111a26;
+  --ui-ink: #e6edf6;
+  --ui-ink-strong: #f4f8fd;
+  --ui-ink-secondary: #c4d0de;
+  --ui-muted: #a3b4c8;
+  --ui-muted-2: #93a5bb;
+  --ui-muted-3: #8698ae;
+  --ui-muted-4: #78899f;
+
+  /* 主色：填充色保持饱和度（保证白字对比度），文字色提亮 */
+  --ui-primary: #2563eb;
+  --ui-primary-strong: #3b82f6;
+  --ui-primary-text: #7cb3ff;
+  --ui-primary-text-strong: #a5c8ff;
+  --ui-primary-soft: rgba(59, 130, 246, 0.22);
+  --ui-primary-softer: rgba(59, 130, 246, 0.14);
+  --ui-primary-border: rgba(96, 165, 250, 0.55);
+  --ui-primary-border-soft: rgba(96, 165, 250, 0.38);
+
+  /* 表面与边框 */
+  --ui-surface: rgba(30, 41, 59, 0.72);
+  --ui-surface-solid: #1b2431;
+  --ui-surface-muted: #17202c;
+  --ui-surface-translucent: rgba(30, 41, 59, 0.66);
+  --ui-surface-raised: rgba(27, 36, 49, 0.98);
+  --ui-border: #2b3a4d;
+  --ui-border-soft: rgba(148, 163, 184, 0.22);
+  --ui-border-faint: rgba(148, 163, 184, 0.14);
+  --ui-border-control: rgba(148, 163, 184, 0.3);
+  --ui-border-input: #3a4a5e;
+  --ui-grid-line: rgba(148, 163, 184, 0.18);
+
+  /* 交互底色 */
+  --ui-hover-bg: rgba(148, 163, 184, 0.16);
+  --ui-hover-soft: rgba(59, 130, 246, 0.16);
+  --ui-active-bg: rgba(59, 130, 246, 0.24);
+  --ui-today-bg: rgba(59, 130, 246, 0.12);
+  --ui-segment-bg: rgba(148, 163, 184, 0.18);
+  --ui-segment-ink: #a3b4c8;
+  --ui-segment-thumb: rgba(255, 255, 255, 0.16);
+  /* 深色下滑块比轨道亮，主色文字压上去对比度不足，选中项改用近白色 */
+  --ui-segment-active-ink: #f4f8fd;
+  --ui-selection-bg: rgba(96, 165, 250, 0.4);
+  --ui-placeholder-ink: #8695a8;
+
+  /* 语义色 */
+  --ui-danger: #b3352b;
+  --ui-danger-text: #ff9d94;
+  --ui-danger-soft: rgba(192, 54, 44, 0.18);
+  --ui-success: #15803d;
+  --ui-success-text: #6ee7a8;
+  --ui-success-soft: rgba(21, 128, 61, 0.22);
+
+  /* 控件与浮层 */
+  --ui-switch-track: #3f4d5f;
+  --ui-switch-knob: #e8eef6;
+  --ui-overlay: rgba(0, 0, 0, 0.6);
+  --ui-toast-bg: #22303f;
+  --ui-toast-ink: #f1f6fc;
+  --ui-glass-btn-bg: rgba(15, 23, 42, 0.72);
+  --ui-glass-btn-ink: #cbd5e1;
+  --ui-placeholder-bg: linear-gradient(
+    180deg,
+    rgba(30, 41, 59, 0.5) 0%,
+    rgba(17, 26, 38, 0.72) 100%
+  );
+
+  /* 云母叠加层：深色云母本身就深，叠加层要从"压白"改成"提亮"。
+     内容层用 WinUI 深色 LayerFillColorDefault，否则壁纸颜色会整片透进课表，
+     密密麻麻的格子会显得又花又脏 */
+  --ui-mica-chrome-bg: rgba(1, 1, 1, 0.01);
+  --ui-mica-content-bg: rgba(58, 58, 58, 0.3); /* WinUI 深色 LayerFillColorDefault */
+  --ui-mica-pill-bg: rgba(255, 255, 255, 0.14);
+
+  /* 焦点 */
+  --ui-focus-ring: rgba(96, 165, 250, 0.45);
+  --ui-focus-ring-soft: rgba(96, 165, 250, 0.24);
+
+  /* 阴影：深色下统一用黑色投影，避免出现发白的"光晕" */
+  --ui-shadow-panel: 0 24px 60px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.35);
+  --ui-shadow-control: 0 5px 14px rgba(0, 0, 0, 0.4);
+  --ui-shadow-control-hover: 0 9px 20px rgba(0, 0, 0, 0.5);
+  --ui-shadow-soft: 0 6px 16px rgba(0, 0, 0, 0.35);
+  --ui-shadow-tight: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ui-shadow-float: 0 18px 36px rgba(0, 0, 0, 0.55);
+  --ui-shadow-dialog: 0 18px 46px rgba(0, 0, 0, 0.6);
+  --ui-shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.65);
+  --ui-shadow-toast: 0 12px 28px rgba(0, 0, 0, 0.5);
+  --ui-shadow-knob: 0 2px 5px rgba(0, 0, 0, 0.45);
+  --ui-shadow-card: 0 5px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --ui-shadow-card-hover: 0 12px 24px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --ui-shadow-exam: 0 6px 14px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --ui-shadow-exam-hover: 0 12px 24px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  /* 课表课程卡片色板：深底 + 同色系浅字 */
+  --ui-course-ink: #dbe6f5;
+  --ui-tone-blue-bg: #1e3a5f;
+  --ui-tone-blue-border: #375f96;
+  --ui-tone-blue-ink: #cfe2ff;
+  --ui-tone-violet-bg: #332457;
+  --ui-tone-violet-border: #4f3a85;
+  --ui-tone-violet-ink: #ded4ff;
+  --ui-tone-teal-bg: #113c38;
+  --ui-tone-teal-border: #1b6159;
+  --ui-tone-teal-ink: #b3f0e4;
+  --ui-tone-amber-bg: #43310f;
+  --ui-tone-amber-border: #6f5417;
+  --ui-tone-amber-ink: #ffe4ac;
+  --ui-tone-rose-bg: #491d28;
+  --ui-tone-rose-border: #773142;
+  --ui-tone-rose-ink: #ffcfd7;
+  --ui-tone-indigo-bg: #262d5e;
+  --ui-tone-indigo-border: #414a8c;
+  --ui-tone-indigo-ink: #d5dbff;
+  --ui-tone-cyan-bg: #0d3546;
+  --ui-tone-cyan-border: #166076;
+  --ui-tone-cyan-ink: #bfeaff;
+  --ui-tone-lime-bg: #2a3a11;
+  --ui-tone-lime-border: #465f1e;
+  --ui-tone-lime-ink: #e3f7c0;
+  --ui-tone-orange-bg: #452611;
+  --ui-tone-orange-border: #74431d;
+  --ui-tone-orange-ink: #ffdcb8;
+  --ui-tone-fuchsia-bg: #401548;
+  --ui-tone-fuchsia-border: #6a2473;
+  --ui-tone-fuchsia-ink: #f6ceff;
+  --ui-tone-sky-bg: #0c3145;
+  --ui-tone-sky-border: #145772;
+  --ui-tone-sky-ink: #c2e6ff;
+  --ui-tone-emerald-bg: #0f3529;
+  --ui-tone-emerald-border: #195744;
+  --ui-tone-emerald-ink: #bcf0d7;
+  --ui-tone-pink-bg: #45162d;
+  --ui-tone-pink-border: #73284d;
+  --ui-tone-pink-ink: #ffd0e5;
+  --ui-tone-slate-bg: #28303f;
+  --ui-tone-slate-border: #455066;
+  --ui-tone-slate-ink: #dfe6f0;
+
+  /* 考试卡片 */
+  --ui-exam-bg: linear-gradient(135deg, #3a2513 0%, #2b1a0d 100%);
+  --ui-exam-border: #b45309;
+  --ui-exam-border-left: #f97316;
+  --ui-exam-ink: #ffd9b3;
+  --ui-exam-kicker: #fdba74;
+  --ui-exam-mark: #f97316;
+  --ui-exam-meta: #f0c092;
+  --ui-exam-extra: #e0a86b;
+  --ui-exam-btn-hover: #d97706;
+  --ui-exam-compact-bg: #6f2718;
+  --ui-exam-compact-border: #ff4d4d;
 }

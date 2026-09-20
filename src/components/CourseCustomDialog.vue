@@ -108,10 +108,10 @@ function handleConfirm() {
   width: 300px;
   max-width: calc(100vw - 16px);
   padding: 16px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 18px 46px rgba(16, 32, 51, 0.22);
+  background: var(--ui-surface-solid);
+  box-shadow: var(--ui-shadow-dialog);
   box-sizing: border-box;
 }
 
@@ -126,7 +126,7 @@ function handleConfirm() {
   margin: 0;
   font-size: 15px;
   font-weight: 800;
-  color: #102033;
+  color: var(--ui-ink);
 }
 
 /* 复用应用顶栏「关闭」字体符号（Segoe Fluent Icons 的 ChromeClose） */
@@ -139,7 +139,7 @@ function handleConfirm() {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #5b6b7f;
+  color: var(--ui-muted);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -152,8 +152,8 @@ function handleConfirm() {
 }
 
 .dialog-close:hover {
-  background: #c0362c;
-  color: #fff;
+  background: var(--ui-danger);
+  color: var(--ui-on-accent);
 }
 
 .dialog-form {
@@ -172,12 +172,12 @@ function handleConfirm() {
 .field-label {
   font-size: 12px;
   font-weight: 600;
-  color: #344054;
+  color: var(--ui-ink-secondary);
 }
 
 .required {
   margin-left: 2px;
-  color: #c0362c;
+  color: var(--ui-danger-text);
 }
 
 .field input,
@@ -186,10 +186,10 @@ function handleConfirm() {
   min-width: 0;
   box-sizing: border-box;
   padding: 8px 10px;
-  border: 1px solid #cfd8e3;
+  border: 1px solid var(--ui-border-input);
   border-radius: 9px;
-  background: #fff;
-  color: #102033;
+  background: var(--ui-surface-solid);
+  color: var(--ui-ink);
   font-size: 13px;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -202,8 +202,8 @@ function handleConfirm() {
 
 .field input:focus,
 .field textarea:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  border-color: var(--ui-primary);
+  box-shadow: 0 0 0 3px var(--ui-focus-ring-soft);
 }
 
 .week-range {
@@ -226,7 +226,7 @@ function handleConfirm() {
 .week-range-sep,
 .week-range-unit {
   font-size: 12px;
-  color: #56708d;
+  color: var(--ui-muted);
   white-space: nowrap;
 }
 
@@ -245,9 +245,9 @@ function handleConfirm() {
   transform: translateY(-50%);
   width: 16px;
   height: 16px;
-  border: 1px solid rgba(16, 32, 51, 0.12);
+  border: 1px solid var(--ui-border-soft);
   border-radius: 5px;
-  background: #2563eb;
+  background: var(--ui-primary);
 }
 
 .dialog-actions {
@@ -268,24 +268,24 @@ function handleConfirm() {
 }
 
 .btn-cancel {
-  border: 1px solid #dbe3ee;
-  background: #fff;
-  color: #56708d;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-solid);
+  color: var(--ui-muted);
 }
 
 .btn-cancel:hover {
-  background: #f2f6fc;
-  color: #102033;
+  background: var(--ui-chrome-bg);
+  color: var(--ui-ink);
 }
 
 .btn-confirm {
-  border: 1px solid #2563eb;
-  background: #2563eb;
-  color: #fff;
+  border: 1px solid var(--ui-primary);
+  background: var(--ui-primary);
+  color: var(--ui-on-accent);
 }
 
 .btn-confirm:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--ui-primary-strong);
 }
 
 .dialog-btn:disabled {

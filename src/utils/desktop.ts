@@ -75,6 +75,35 @@ export const electronAPI = {
   openForgotPassword: () => {
     void invoke('open_forgot')
   },
+  // 当前窗口的背景材质：mica 表示 Win11 云母已启用，页面需要让出底色（styles/backdrop.css）
+  backdrop: () => invoke<string>('window_backdrop'),
+  // 把主题同步给原生窗口：云母是 DWM 按窗口主题着色的，只切页面不切窗口会颜色错配
+  setWindowTheme: (theme: 'light' | 'dark' | null) => {
+    void invoke('set_window_theme', { theme })
+  },
+  // 主题变化广播：通知所有窗口（含隐藏窗口）一起切换
+  notifyThemeChanged: (theme: 'system' | 'light' | 'dark') => {
+    void invoke('notify_theme_changed', { theme })
+  },
+  onThemeChanged: (callback: (theme: string) => void) => {
+    const win = getCurrentWindow()
+    void win.listen<string>('theme-changed', (event) => callback(event.payload))
+  },
+  // 当前进程已有几个窗口：启动时用它判断本窗口是不是"本次启动的第一个窗口"
+  windowCount: () => invoke<number>('window_count'),
+  // 展示周变化：广播给所有窗口，让隐藏着的另一窗口一起切换
+  notifyWeekChanged: (week: number) => {
+    void invoke('notify_week_changed', { week })
+  },
+  onWeekChanged: (callback: (week: number) => void) => {
+    const win = getCurrentWindow()
+    void win.listen<number>('week-changed', (event) => callback(event.payload))
+  },
+  // 迷你窗被重新显示（进入迷你模式）时触发：窗口只隐藏不销毁，需要靠这个事件重新同步
+  onMiniShown: (callback: () => void) => {
+    const win = getCurrentWindow()
+    void win.listen('mini-shown', () => callback())
+  },
   checkForUpdate: async (): Promise<UpdateCheckResult> => {
     try {
       return await invoke<UpdateCheckResult>('check_update')

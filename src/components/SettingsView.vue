@@ -23,6 +23,17 @@ const menuItems = [
 
 const activeSection = ref<SettingsSection>('display')
 
+// 主题三选一：system 跟随系统实时切换，light / dark 手动固定
+const themeOptions = [
+  { key: 'system', label: '系统' },
+  { key: 'light', label: '浅色' },
+  { key: 'dark', label: '深色' },
+] as const
+
+function selectTheme(theme: (typeof themeOptions)[number]['key']) {
+  auth.setTheme(theme)
+}
+
 function toggleCourseCardMotion(event: Event) {
   const target = event.target as HTMLInputElement
   auth.setCourseCardMotion(target.checked)
@@ -71,6 +82,42 @@ function toggleWindowMemory(event: Event) {
     <section class="settings-content">
       <div v-if="activeSection === 'display'" class="setting-panel">
         <h1 class="panel-title">显示与主题</h1>
+        <div class="setting-item setting-item-theme">
+          <div>
+            <strong>选择主题</strong>
+            <p>跟随系统自动切换，或固定使用浅色 / 深色。</p>
+          </div>
+          <div class="theme-switch" role="radiogroup" aria-label="选择主题">
+            <button
+              v-for="option in themeOptions"
+              :key="option.key"
+              type="button"
+              role="radio"
+              class="theme-option"
+              :class="{ active: uiSettings.theme === option.key }"
+              :aria-checked="uiSettings.theme === option.key"
+              :title="option.label"
+              @click="selectTheme(option.key)"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                <template v-if="option.key === 'system'">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none" />
+                </template>
+                <template v-else-if="option.key === 'light'">
+                  <circle cx="12" cy="12" r="4" />
+                  <path
+                    d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+                  />
+                </template>
+                <template v-else>
+                  <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+                </template>
+              </svg>
+              <span>{{ option.label }}</span>
+            </button>
+          </div>
+        </div>
         <div class="setting-item">
           <div>
             <strong>课程卡片动效</strong>
@@ -144,10 +191,10 @@ function toggleWindowMemory(event: Event) {
   gap: 4px;
   align-self: start;
   padding: 8px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 6px 16px rgba(30, 64, 110, 0.06);
+  background: var(--ui-surface-translucent);
+  box-shadow: var(--ui-shadow-soft);
 }
 
 .settings-menu-item {
@@ -159,7 +206,7 @@ function toggleWindowMemory(event: Event) {
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: #56708d;
+  color: var(--ui-muted);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -177,13 +224,13 @@ function toggleWindowMemory(event: Event) {
 }
 
 .settings-menu-item:hover {
-  background: #eef4fc;
-  color: #1d4ed8;
+  background: var(--ui-hover-soft);
+  color: var(--ui-primary-text-strong);
 }
 
 .settings-menu-item.active {
-  background: #e3edfd;
-  color: #1d4ed8;
+  background: var(--ui-active-bg);
+  color: var(--ui-primary-text-strong);
   font-weight: 700;
 }
 
@@ -195,15 +242,15 @@ function toggleWindowMemory(event: Event) {
 .about-panel {
   max-width: 560px;
   padding: 36px 40px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 12px 30px rgba(30, 64, 110, 0.07);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-soft);
 }
 
 .panel-title {
   margin: 0;
-  color: #102033;
+  color: var(--ui-ink);
   font-size: 20px;
   font-weight: 800;
 }
@@ -215,21 +262,79 @@ function toggleWindowMemory(event: Event) {
   gap: 20px;
   margin-top: 24px;
   padding: 16px 0;
-  border-top: 1px solid #edf2f9;
+  border-top: 1px solid var(--ui-border-faint);
 }
 
 .setting-item strong {
   display: block;
-  color: #102033;
+  color: var(--ui-ink);
   font-size: 14px;
   font-weight: 700;
 }
 
 .setting-item p {
   margin: 6px 0 0;
-  color: #8296ab;
+  color: var(--ui-muted-3);
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* 主题三选一：分段控件，选中项用滑块底色 + 主色文字强调 */
+.theme-switch {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1.5px solid var(--ui-grid-line);
+  border-radius: 999px;
+  background: var(--ui-segment-bg);
+}
+
+/* 这一行的控件较宽：窄窗口下整体换行，避免把说明文字挤成一字一行 */
+.setting-item-theme {
+  flex-wrap: wrap;
+  row-gap: 12px;
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ui-segment-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.theme-option svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.theme-option:hover {
+  color: var(--ui-primary-text);
+}
+
+.theme-option.active {
+  background: var(--ui-segment-thumb);
+  color: var(--ui-segment-active-ink);
+  box-shadow: var(--ui-shadow-tight);
+}
+
+.theme-option:focus-visible {
+  outline: 3px solid var(--ui-focus-ring);
+  outline-offset: 2px;
 }
 
 .switch {
@@ -251,7 +356,7 @@ function toggleWindowMemory(event: Event) {
   position: absolute;
   inset: 0;
   border-radius: 999px;
-  background: #cbd5e1;
+  background: var(--ui-switch-track);
   transition: background 0.2s ease;
 }
 
@@ -262,14 +367,14 @@ function toggleWindowMemory(event: Event) {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 2px 5px rgba(30, 64, 110, 0.2);
+  background: var(--ui-switch-knob);
+  box-shadow: var(--ui-shadow-knob);
   content: '';
   transition: transform 0.2s ease;
 }
 
 .switch input:checked + .switch-track {
-  background: #2563eb;
+  background: var(--ui-primary);
 }
 
 .switch input:checked + .switch-track::after {
@@ -277,17 +382,17 @@ function toggleWindowMemory(event: Event) {
 }
 
 .switch input:focus-visible + .switch-track {
-  outline: 3px solid rgba(96, 165, 250, 0.28);
+  outline: 3px solid var(--ui-focus-ring);
   outline-offset: 2px;
 }
 
 .about-panel {
   max-width: 560px;
   padding: 36px 40px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 12px 30px rgba(30, 64, 110, 0.07);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-soft);
 }
 
 .about-logo {
@@ -302,13 +407,13 @@ function toggleWindowMemory(event: Event) {
   margin: 18px 0 0;
   font-size: 22px;
   font-weight: 800;
-  color: #102033;
+  color: var(--ui-ink);
 }
 
 .about-preview {
   display: block;
   margin-top: 3px;
-  color: #94a3b8;
+  color: var(--ui-muted-4);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -317,17 +422,17 @@ function toggleWindowMemory(event: Event) {
 .about-name-zh {
   margin: 4px 0 0;
   font-size: 13px;
-  color: #5b6b7f;
+  color: var(--ui-muted);
 }
 
 .about-version {
   display: inline-block;
   margin-top: 14px;
   padding: 3px 10px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 999px;
-  background: #f6f9fd;
-  color: #56708d;
+  background: var(--ui-surface-muted);
+  color: var(--ui-muted);
   font-size: 12px;
 }
 
@@ -335,11 +440,11 @@ function toggleWindowMemory(event: Event) {
   margin: 16px 0 0;
   font-size: 13px;
   line-height: 1.7;
-  color: #344054;
+  color: var(--ui-ink-secondary);
 }
 
 .about-desc a {
-  color: #1d4ed8;
+  color: var(--ui-primary-text-strong);
   text-decoration: none;
 }
 
@@ -353,10 +458,10 @@ function toggleWindowMemory(event: Event) {
 
 .check-update-btn {
   padding: 8px 18px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 999px;
-  background: #f6f9fd;
-  color: #1d4ed8;
+  background: var(--ui-surface-muted);
+  color: var(--ui-primary-text-strong);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
@@ -364,8 +469,8 @@ function toggleWindowMemory(event: Event) {
 }
 
 .check-update-btn:hover:not(:disabled) {
-  background: #e3edfd;
-  border-color: #b9cdf5;
+  background: var(--ui-active-bg);
+  border-color: var(--ui-primary-border-soft);
 }
 
 .check-update-btn:disabled {
@@ -381,8 +486,8 @@ function toggleWindowMemory(event: Event) {
   flex-wrap: wrap;
   margin-top: 26px;
   padding-top: 16px;
-  border-top: 1px solid #edf2f9;
+  border-top: 1px solid var(--ui-border-faint);
   font-size: 12px;
-  color: #8296ab;
+  color: var(--ui-muted-3);
 }
 </style>

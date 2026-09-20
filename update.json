@@ -1,4 +1,4 @@
 {
-  "version": "0.4.1",
-  "releaseNotes": "「底层重构」完全抛弃electron，采用Tauri架构进行重写，包体大小锐减。"
+  "version": "0.5.0",
+  "releaseNotes": "支持win11云母效果（仅win11可用）；支持深浅色模式"
 }

@@ -103,15 +103,15 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  color: #5b6b7f;
+  color: var(--ui-muted);
   font-size: 14px;
 }
 
 .spinner {
   width: 22px;
   height: 22px;
-  border: 2.5px solid #dbe3ee;
-  border-top-color: #2563eb;
+  border: 2.5px solid var(--ui-border);
+  border-top-color: var(--ui-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -125,10 +125,10 @@ onMounted(() => {
 .profile-card {
   width: min(100%, 520px);
   padding: 28px 32px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 12px 30px rgba(30, 64, 110, 0.07);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-soft);
 }
 
 .profile-header {
@@ -136,7 +136,7 @@ onMounted(() => {
   align-items: center;
   gap: 16px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #edf2f9;
+  border-bottom: 1px solid var(--ui-border-faint);
 }
 
 .profile-avatar {
@@ -151,14 +151,14 @@ onMounted(() => {
   margin: 0;
   font-size: 20px;
   font-weight: 800;
-  color: #102033;
+  color: var(--ui-ink);
 }
 
 .profile-id {
   display: block;
   margin-top: 4px;
   font-size: 13px;
-  color: #5b6b7f;
+  color: var(--ui-muted);
 }
 
 .profile-fields {
@@ -170,14 +170,14 @@ onMounted(() => {
 
 .profile-fields dt {
   font-size: 13px;
-  color: #8296ab;
+  color: var(--ui-muted-3);
 }
 
 .profile-fields dd {
   margin: 0;
   font-size: 13px;
   font-weight: 900;
-  color: #102033;
+  color: var(--ui-ink);
 }
 
 .profile-actions {
@@ -185,15 +185,15 @@ onMounted(() => {
   justify-content: center;
   margin-top: 24px;
   padding-top: 18px;
-  border-top: 1px solid #edf2f9;
+  border-top: 1px solid var(--ui-border-faint);
 }
 
 .action-btn {
   padding: 8px 16px;
-  border: 1px solid #dbe3ee;
+  border: 1px solid var(--ui-border);
   border-radius: 9px;
-  background: #f6f9fd;
-  color: #1d4ed8;
+  background: var(--ui-surface-muted);
+  color: var(--ui-primary-text-strong);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -201,18 +201,18 @@ onMounted(() => {
 }
 
 .action-btn:hover {
-  background: #e3edfd;
+  background: var(--ui-active-bg);
 }
 
 .action-btn.logout {
   padding: 12px 40px;
   border-color: transparent;
   background: transparent;
-  color: #c0362c;
+  color: var(--ui-danger-text);
   font-size: 15px;
 }
 
 .action-btn.logout:hover {
-  background: #fdeceb;
+  background: var(--ui-danger-soft);
 }
 </style>
