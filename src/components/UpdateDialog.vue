@@ -5,8 +5,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import appIcon from '../assets/icon.png'
-import { version as appVersion } from '../../update.json'
 import { updateState, closeUpdate, startDownload } from '../utils/update'
+
+// 版本号由 vite 从 src-tauri/tauri.conf.json 注入（安装包与更新检查用的就是它）
+const appVersion = __APP_VERSION__
 
 const noReminder = ref(false)
 </script>

@@ -1,4 +1,4 @@
 {
-  "version": "0.5.0",
-  "releaseNotes": "支持win11云母效果（仅win11可用）；支持深浅色模式"
+  "version": "0.5.1",
+  "releaseNotes": "修复了一些已知问题"
 }

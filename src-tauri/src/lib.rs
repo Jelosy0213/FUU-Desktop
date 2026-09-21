@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{
     utils::config::WindowEffectsConfig, window::Effect, AppHandle, Emitter, Manager,
-    PhysicalPosition, Theme, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    PhysicalPosition, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 mod jw;
@@ -58,14 +58,28 @@ pub(crate) struct Credentials {
 
 // ===== 窗口创建 =====
 
+// 由 Rust 在创建窗口时注入页面：标记"本次启动的第一个窗口"（它负责把课表定位到本周）。
+// 主窗与迷你窗成对预建，靠"当前窗口数"已经分不出先后（主窗页面加载时迷你窗往往已存在），
+// 所以改为在创建时直接写进页面，前端挂载前就能读到（见 main.ts 的 sessionFirstWindow）。
+const FIRST_WINDOW_SCRIPT: &str = "window.__FUU_FIRST_WINDOW__ = true;";
+
 fn base_builder<'a>(
     app: &'a AppHandle,
     label: &str,
     url: &str,
+    first_window: bool,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
-    WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
         .title("福UU")
         .decorations(false)
+        // 一律先建成隐藏的，由调用方决定何时 show()：
+        // 主窗与迷你窗会成对预建，多出来的那个必须保持隐藏（否则会闪一下）
+        .visible(false);
+    if first_window {
+        builder.initialization_script(FIRST_WINDOW_SCRIPT)
+    } else {
+        builder
+    }
 }
 
 // 统一的窗口创建：不再吞掉 build 错误，否则窗口会以空白状态存在且无从排查
@@ -100,11 +114,28 @@ fn with_backdrop<'a>(
     }
 }
 
+// 建窗口（已存在则跳过）与显示窗口分开：预建的窗口要一直保持隐藏，
+// 只有真正切过去时才 show()。first 表示"本次启动的第一个窗口"（见 FIRST_WINDOW_SCRIPT）
+fn create_window(app: &AppHandle, label: &str, first: bool) {
+    match label {
+        "mini" => create_mini_window(app, first),
+        "login" => create_login_window(app),
+        _ => create_main_window(app, first),
+    }
+}
+
+fn show_window(app: &AppHandle, label: &str) {
+    if let Some(window) = app.get_webview_window(label) {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 fn create_login_window(app: &AppHandle) {
     if app.get_webview_window("login").is_some() {
         return;
     }
-    let builder = base_builder(app, "login", "index.html")
+    let builder = base_builder(app, "login", "index.html", false)
         .inner_size(LOGIN_W.0, LOGIN_W.1)
         .resizable(false)
         .maximizable(false)
@@ -112,13 +143,14 @@ fn create_login_window(app: &AppHandle) {
     build_window(builder, "login");
 }
 
-fn create_main_window(app: &AppHandle) {
+// first：本次启动的第一个窗口（见 FIRST_WINDOW_SCRIPT）
+fn create_main_window(app: &AppHandle, first: bool) {
     if app.get_webview_window("main").is_some() {
         return;
     }
     let builder = with_backdrop(
         "main",
-        base_builder(app, "main", "index.html")
+        base_builder(app, "main", "index.html", first)
             .inner_size(MAIN_W.0, MAIN_W.1)
             .min_inner_size(990.0, 670.0)
             .resizable(true),
@@ -126,13 +158,13 @@ fn create_main_window(app: &AppHandle) {
     build_window(builder, "main");
 }
 
-fn create_mini_window(app: &AppHandle) {
+fn create_mini_window(app: &AppHandle, first: bool) {
     if app.get_webview_window("mini").is_some() {
         return;
     }
     let builder = with_backdrop(
         "mini",
-        base_builder(app, "mini", "index.html")
+        base_builder(app, "mini", "index.html", first)
             .inner_size(MINI_W.0, MINI_W.1)
             .resizable(false)
             .maximizable(false)
@@ -197,24 +229,29 @@ async fn show_login(app: AppHandle) {
 
 #[tauri::command]
 async fn show_main(app: AppHandle) {
-    // 先关登录窗、再建主窗：前端据"当前进程里有几个窗口"判断自己是不是本次启动的第一个窗口
-    // （第一个窗口负责把课表定位到本周），这里保持同一时序可避免它被误判为后续窗口
+    // 顺序：先建两个窗口、再关登录窗。
+    // 反过来（先关后建）会短暂出现"零窗口"：Tauri 按"最后一个窗口已关闭"走退出流程，
+    // 同时 WebView2 的进程级共享资源（消息窗口 Chrome_WidgetWin_0、Profile）被释放，
+    // 紧接着新建的窗口再去用它们就只剩一个失效句柄 —— 表现为登录后直接闪退，
+    // 日志只有 "PostMessage failed ... 无效的窗口句柄" 与
+    // "Failed to unregister class Chrome_WidgetWin_0" 这类收尾噪音。
+    // 主窗先建，并带上"第一个窗口"标记（课表定位到本周，见 FIRST_WINDOW_SCRIPT）；
+    // 迷你窗随后预建并保持隐藏。
+    create_window(&app, "main", true);
+    show_window(&app, "main");
+    create_window(&app, "mini", false);
     if let Some(w) = app.get_webview_window("login") {
         let _ = w.close();
-    }
-    create_main_window(&app);
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.set_focus();
     }
     write_window_mode(&app, "main");
 }
 
-// 当前进程里已有几个窗口：前端启动时据此判断自己是不是"本次启动的第一个窗口"。
-// 第一个窗口负责把课表定位到本周，之后创建的窗口继承当前展示周。
+// 当前窗口是否可见：隐藏的那个窗口（预建的另一窗口）据此决定启动时要不要主动拉数据。
+// 隐藏窗口应当等真正被显示时的 window-shown 事件再拉，见各视图的 onMounted。
+// 查询失败时按"可见"处理：宁可多拉一次，也不要让页面停在旧数据上
 #[tauri::command]
-fn window_count(app: AppHandle) -> usize {
-    app.webview_windows().len()
+fn is_window_visible(window: WebviewWindow) -> bool {
+    window.is_visible().unwrap_or(true)
 }
 
 // 展示周变化时广播给所有窗口：让隐藏着的另一窗口也一起切换（前端按幂等处理，相同值会忽略）
@@ -230,16 +267,16 @@ async fn enter_mini(app: AppHandle) {
     let Some(main) = app.get_webview_window("main") else {
         return;
     };
-    create_mini_window(&app);
+    create_mini_window(&app, false);
     if let Some(mini) = app.get_webview_window("mini") {
         if let Some(pos) = mini_position(&app) {
             let _ = mini.set_position(pos);
         }
         let _ = mini.show();
         let _ = mini.set_focus();
-        // 告诉迷你窗"自己被重新显示了"：它据此同步缓存并按需刷新数据。
+        // 告诉迷你窗"自己被显示出来了"：它据此同步缓存并按需刷新数据。
         // 不用焦点事件，是因为在小窗里操作会反复触发焦点事件，会让每次交互都拉一轮教务数据
-        let _ = app.emit("mini-shown", ());
+        let _ = mini.emit("window-shown", ());
     }
     // 隐藏主窗口：不再吞掉错误（原来用 let _ = 时失败完全无声）
     if let Err(error) = main.hide() {
@@ -250,10 +287,12 @@ async fn enter_mini(app: AppHandle) {
 
 #[tauri::command]
 async fn exit_mini(app: AppHandle) {
-    create_main_window(&app);
+    create_main_window(&app, false);
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
+        // 主窗同样是从隐藏状态回来的（之前切到了迷你窗）：通知它同步缓存并按需刷新
+        let _ = w.emit("window-shown", ());
     }
     // 迷你窗只隐藏、不销毁：重建一个 webview 意味着整页重载（Vue 应用 + 课表数据），
     // 来回切换的代价远大于保留一个窗口。真正关闭迷你窗仍然等同于退出应用（见 window_close），
@@ -319,28 +358,6 @@ fn window_backdrop(window: WebviewWindow) -> &'static str {
         "mica"
     } else {
         "solid"
-    }
-}
-
-// 把设置里选定的主题同步给原生窗口。云母是 DWM 按**窗口主题**着色的：
-// 只切页面不切窗口，会出现"深色界面压在浅色云母上"（或反之）的错配。
-// theme 为 None 表示交回系统决定，对应设置里的"系统"档。
-#[tauri::command]
-fn set_window_theme(window: WebviewWindow, theme: Option<String>) -> Result<(), String> {
-    let theme = match theme.as_deref() {
-        Some("light") => Some(Theme::Light),
-        Some("dark") => Some(Theme::Dark),
-        _ => None,
-    };
-    window.set_theme(theme).map_err(|error| error.to_string())
-}
-
-// 主题变化时广播给所有窗口：主题偏好存在 localStorage，每个窗口各有一份 store，
-// 不同步的话隐藏中的窗口（主窗/迷你窗）会停留在旧主题，重新显示时云母与页面对不上
-#[tauri::command]
-fn notify_theme_changed(app: AppHandle, theme: String) {
-    if let Err(error) = app.emit("theme-changed", theme) {
-        eprintln!("[window] 广播主题失败：{error}");
     }
 }
 
@@ -493,19 +510,31 @@ fn set_window_memory(app: AppHandle, enabled: bool) {
     write_flag(&app, "fzu-window-memory", enabled);
 }
 
-// 启动时决定初始窗口：有凭据且非主动退出 → 主窗；否则登录窗。
+// 启动时决定初始窗口：有凭据且非主动退出 → 主窗/迷你窗；否则登录窗。
+//
+// 主窗与迷你窗成对预建：另一个也一并建好（隐藏），页面在启动时就加载完，
+// 之后"缩小/放大"只是显示/隐藏，切换过程中不再新建 WebView2 —— 既不会白屏，
+// 也避开了切窗时创建/销毁 webview 那一类问题。
+// 顺序有讲究：先建"当前模式"那个并带上"第一个窗口"标记（它负责把课表定位到本周），
+// 后建的那个不带标记、只继承缓存里的展示周（见 FIRST_WINDOW_SCRIPT）。
 fn initial_window(app: &AppHandle) {
     let explicit_logout = read_flag(app, "fzu-explicit-logout", false);
     let has_credentials = read_credentials().is_some();
-    if has_credentials && !explicit_logout {
-        if read_flag(app, "fzu-window-memory", true) && read_window_mode(app) == "mini" {
-            create_mini_window(app);
-        } else {
-            create_main_window(app);
-        }
-    } else {
+    if !has_credentials || explicit_logout {
         create_login_window(app);
+        show_window(app, "login");
+        return;
     }
+
+    let start_mini = read_flag(app, "fzu-window-memory", true) && read_window_mode(app) == "mini";
+    let (active, hidden) = if start_mini {
+        ("mini", "main")
+    } else {
+        ("main", "mini")
+    };
+    create_window(app, active, true);
+    show_window(app, active);
+    create_window(app, hidden, false);
 }
 
 pub fn run() {
@@ -538,9 +567,7 @@ pub fn run() {
             window_toggle_maximize,
             window_close,
             window_backdrop,
-            set_window_theme,
-            notify_theme_changed,
-            window_count,
+            is_window_visible,
             notify_week_changed,
             // 凭据与标记
             credentials_set,

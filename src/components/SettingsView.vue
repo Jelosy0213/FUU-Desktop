@@ -7,8 +7,10 @@ import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../stores/auth'
 import appIcon from '../assets/icon.png'
-import { version as appVersion } from '../../update.json'
 import { checkForUpdate, updateState } from '../utils/update'
+
+// 版本号由 vite 从 src-tauri/tauri.conf.json 注入（安装包与更新检查用的就是它）
+const appVersion = __APP_VERSION__
 
 type SettingsSection = 'display' | 'system' | 'about'
 
@@ -22,17 +24,6 @@ const menuItems = [
 ] as const
 
 const activeSection = ref<SettingsSection>('display')
-
-// 主题三选一：system 跟随系统实时切换，light / dark 手动固定
-const themeOptions = [
-  { key: 'system', label: '系统' },
-  { key: 'light', label: '浅色' },
-  { key: 'dark', label: '深色' },
-] as const
-
-function selectTheme(theme: (typeof themeOptions)[number]['key']) {
-  auth.setTheme(theme)
-}
 
 function toggleCourseCardMotion(event: Event) {
   const target = event.target as HTMLInputElement
@@ -82,42 +73,6 @@ function toggleWindowMemory(event: Event) {
     <section class="settings-content">
       <div v-if="activeSection === 'display'" class="setting-panel">
         <h1 class="panel-title">显示与主题</h1>
-        <div class="setting-item setting-item-theme">
-          <div>
-            <strong>选择主题</strong>
-            <p>跟随系统自动切换，或固定使用浅色 / 深色。</p>
-          </div>
-          <div class="theme-switch" role="radiogroup" aria-label="选择主题">
-            <button
-              v-for="option in themeOptions"
-              :key="option.key"
-              type="button"
-              role="radio"
-              class="theme-option"
-              :class="{ active: uiSettings.theme === option.key }"
-              :aria-checked="uiSettings.theme === option.key"
-              :title="option.label"
-              @click="selectTheme(option.key)"
-            >
-              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
-                <template v-if="option.key === 'system'">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor" stroke="none" />
-                </template>
-                <template v-else-if="option.key === 'light'">
-                  <circle cx="12" cy="12" r="4" />
-                  <path
-                    d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
-                  />
-                </template>
-                <template v-else>
-                  <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
-                </template>
-              </svg>
-              <span>{{ option.label }}</span>
-            </button>
-          </div>
-        </div>
         <div class="setting-item">
           <div>
             <strong>课程卡片动效</strong>
@@ -277,64 +232,6 @@ function toggleWindowMemory(event: Event) {
   color: var(--ui-muted-3);
   font-size: 12px;
   line-height: 1.5;
-}
-
-/* 主题三选一：分段控件，选中项用滑块底色 + 主色文字强调 */
-.theme-switch {
-  flex: none;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1.5px solid var(--ui-grid-line);
-  border-radius: 999px;
-  background: var(--ui-segment-bg);
-}
-
-/* 这一行的控件较宽：窄窗口下整体换行，避免把说明文字挤成一字一行 */
-.setting-item-theme {
-  flex-wrap: wrap;
-  row-gap: 12px;
-}
-
-.theme-option {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ui-segment-ink);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
-}
-
-.theme-option svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.theme-option:hover {
-  color: var(--ui-primary-text);
-}
-
-.theme-option.active {
-  background: var(--ui-segment-thumb);
-  color: var(--ui-segment-active-ink);
-  box-shadow: var(--ui-shadow-tight);
-}
-
-.theme-option:focus-visible {
-  outline: 3px solid var(--ui-focus-ring);
-  outline-offset: 2px;
 }
 
 .switch {

@@ -19,13 +19,19 @@ function handleChangeTerm(term: string) {
   auth.selectTerm(term)
 }
 
-onMounted(() => {
-  // 迷你窗口：从缓存课表立即展示，后台静默恢复会话并刷新数据
-  if (auth.loggedIn) void auth.startupAutoLogin()
+// 隐藏窗口不主动拉数据（拿不到原生接口时按可见处理，纯浏览器下照常工作）
+async function isWindowVisible() {
+  return (await window.electronAPI?.isWindowVisible?.()) ?? true
+}
+
+onMounted(async () => {
+  // 迷你窗是预建的（启动时隐藏），先只展示缓存课表；隐藏时不拉数据，
+  // 等真正被显示时的 window-shown 再恢复会话并刷新
+  if (auth.loggedIn && (await isWindowVisible())) void auth.startupAutoLogin()
 
   // 迷你窗只隐藏、不销毁，"重新显示"不会再触发 onMounted，因此由 Rust 在显示时发事件通知：
   // 同步主窗写入的缓存（课表与展示周），并按需刷新（超过刷新间隔才真的拉数据）
-  window.electronAPI?.onMiniShown(() => {
+  window.electronAPI?.onWindowShown(() => {
     auth.syncFromCache()
     auth.refreshIfStale()
   })

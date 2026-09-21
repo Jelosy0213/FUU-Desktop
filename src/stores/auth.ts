@@ -15,14 +15,11 @@ import {
   writeStoredString,
   writeStoredValue,
 } from '../utils/storage'
-import { applyTheme, type ThemePreference } from '../utils/theme'
 import type { CourseResult, ExamResult, ProfileInfo, SchoolCalendar } from '../types/fzu'
 
 // 主动退出标记由主进程持久化（auth:set-explicit-logout IPC），启动时据此决定直接打开主窗口还是登录窗
 
 interface UISettings {
-  // 主题偏好：默认跟随系统
-  theme: ThemePreference
   courseCardMotion: boolean
   // 启动时记忆窗口：默认开启，重启后恢复上次窗口模式（小窗/大窗）
   windowMemory: boolean
@@ -31,15 +28,9 @@ interface UISettings {
 // UI 设置缓存
 const UI_SETTINGS_CACHE_KEY = 'fzu_ui_settings'
 
-// 兼容旧缓存与脏数据：非法取值一律回落到“跟随系统”
-function readThemePreference(value: unknown): ThemePreference {
-  return value === 'light' || value === 'dark' ? value : 'system'
-}
-
 function readUISettings(): UISettings {
   const stored = readStoredValue<Partial<UISettings> | null>(UI_SETTINGS_CACHE_KEY, null)
   return {
-    theme: readThemePreference(stored?.theme),
     courseCardMotion: stored?.courseCardMotion ?? false,
     windowMemory: stored?.windowMemory ?? true,
   }
@@ -114,7 +105,7 @@ export const useAuthStore = defineStore('auth', () => {
   const courseWeek = ref<number | null>(courseCache?.courseWeek ?? null)
   const uiSettings = ref<UISettings>(readUISettings())
   // 本次启动的第一个窗口：课表据此定位到本周；之后创建的窗口继承当前展示周。
-  // 由 main.ts 在挂载前根据 window_count 写入
+  // 由 main.ts 在挂载前根据 Rust 注入的标记（FIRST_WINDOW_SCRIPT）写入
   const sessionFirstWindow = ref(false)
   const toastMessage = ref('')
   const toastType = ref<'success' | 'error' | 'info'>('info')
@@ -155,24 +146,6 @@ export const useAuthStore = defineStore('auth', () => {
   function setCourseCardMotion(enabled: boolean) {
     uiSettings.value = { ...uiSettings.value, courseCardMotion: enabled }
     writeUISettings(uiSettings.value)
-  }
-
-  // 主题偏好：持久化后立即把解析结果写到 <html data-theme>（CSS 只认该属性），
-  // 并广播给另一窗口——主题存在 localStorage，每个窗口各有一份 store，
-  // 不同步的话隐藏中的窗口会停留在旧主题，重新显示时云母与页面对不上
-  function setTheme(theme: ThemePreference) {
-    uiSettings.value = { ...uiSettings.value, theme }
-    writeUISettings(uiSettings.value)
-    applyTheme(theme)
-    window.electronAPI?.notifyThemeChanged(theme)
-  }
-
-  // 收到另一窗口广播的主题：只更新本地状态并应用，不再广播（避免两个窗口来回弹）
-  function applyRemoteTheme(theme: string) {
-    const preference = readThemePreference(theme)
-    if (uiSettings.value.theme === preference) return
-    uiSettings.value = { ...uiSettings.value, theme: preference }
-    applyTheme(preference)
   }
 
   // 启动时记忆窗口开关：本地持久化 + 同步主进程（启动时由主进程决定开大窗还是小窗）
@@ -475,8 +448,6 @@ export const useAuthStore = defineStore('auth', () => {
     syncFromCache,
     sessionFirstWindow,
     uiSettings,
-    setTheme,
-    applyRemoteTheme,
     setCourseCardMotion,
     setWindowMemory,
     toastMessage,

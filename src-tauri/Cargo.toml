@@ -1,6 +1,6 @@
 [package]
 name = "fzu_desktop"
-version = "0.4.1"
+version = "0.5.1"
 description = "福UU（第三方）"
 authors = ["Jelosy"]
 edition = "2021"
