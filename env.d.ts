@@ -45,7 +45,7 @@ declare global {
       // 本窗口当前是否可见：隐藏的窗口启动时不主动拉数据
       isWindowVisible: () => Promise<boolean>
       checkForUpdate: () => Promise<UpdateCheckResult>
-      downloadUpdate: (url: string) => void
+      downloadAndInstall: (url: string) => Promise<void>
       onUpdateProgress: (callback: (data: { percent: number }) => void) => void
       onUpdateDone: (callback: (data: { status: 'completed' | 'failed'; reason?: string; path: string }) => void) => void
     }

@@ -63,23 +63,37 @@ pub(crate) struct Credentials {
 // 所以改为在创建时直接写进页面，前端挂载前就能读到（见 main.ts 的 sessionFirstWindow）。
 const FIRST_WINDOW_SCRIPT: &str = "window.__FUU_FIRST_WINDOW__ = true;";
 
+// 窗口首次创建时的角色：决定建成后是否立即可见、以及要不要注入"第一个窗口"标记
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WindowRole {
+    // 本次启动的第一个窗口：立即可见 + 带标记（课表定位到本周）
+    First,
+    // 立即可见的普通窗口（切换过程中补建）
+    Visible,
+    // 成对预建的另一个窗口：建成隐藏，等真正切过去时再显示
+    Precreated,
+}
+
 fn base_builder<'a>(
     app: &'a AppHandle,
     label: &str,
     url: &str,
-    first_window: bool,
+    role: WindowRole,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
-    let builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
+    let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
         .title("福UU")
-        .decorations(false)
-        // 一律先建成隐藏的，由调用方决定何时 show()：
-        // 主窗与迷你窗会成对预建，多出来的那个必须保持隐藏（否则会闪一下）
-        .visible(false);
-    if first_window {
-        builder.initialization_script(FIRST_WINDOW_SCRIPT)
-    } else {
-        builder
+        .decorations(false);
+    // 立刻要显示的窗口必须**直接建成可见**：云母这类背景材质要等窗口可见后才会被 DWM
+    // 真正合成，建成隐藏再紧跟着 show() 的那个 show() 往往来不及 —— 表现为"打开时没有
+    // 云母，切一下另一个窗口才出现"（切换会触发一次重新合成）。只有成对预建的那个窗口
+    // 才建成隐藏，它稍后由 show() 显示，那时 DWM 是会正常合成的。
+    if role == WindowRole::Precreated {
+        builder = builder.visible(false);
     }
+    if role == WindowRole::First {
+        builder = builder.initialization_script(FIRST_WINDOW_SCRIPT);
+    }
+    builder
 }
 
 // 统一的窗口创建：不再吞掉 build 错误，否则窗口会以空白状态存在且无从排查
@@ -114,13 +128,13 @@ fn with_backdrop<'a>(
     }
 }
 
-// 建窗口（已存在则跳过）与显示窗口分开：预建的窗口要一直保持隐藏，
-// 只有真正切过去时才 show()。first 表示"本次启动的第一个窗口"（见 FIRST_WINDOW_SCRIPT）
-fn create_window(app: &AppHandle, label: &str, first: bool) {
+// 建窗口（已存在则跳过）与显示窗口分开：预建的窗口要保持隐藏，
+// 只有真正切过去时才 show()。role 见 WindowRole
+fn create_window(app: &AppHandle, label: &str, role: WindowRole) {
     match label {
-        "mini" => create_mini_window(app, first),
+        "mini" => create_mini_window(app, role),
         "login" => create_login_window(app),
-        _ => create_main_window(app, first),
+        _ => create_main_window(app, role),
     }
 }
 
@@ -135,7 +149,7 @@ fn create_login_window(app: &AppHandle) {
     if app.get_webview_window("login").is_some() {
         return;
     }
-    let builder = base_builder(app, "login", "index.html", false)
+    let builder = base_builder(app, "login", "index.html", WindowRole::Visible)
         .inner_size(LOGIN_W.0, LOGIN_W.1)
         .resizable(false)
         .maximizable(false)
@@ -143,14 +157,13 @@ fn create_login_window(app: &AppHandle) {
     build_window(builder, "login");
 }
 
-// first：本次启动的第一个窗口（见 FIRST_WINDOW_SCRIPT）
-fn create_main_window(app: &AppHandle, first: bool) {
+fn create_main_window(app: &AppHandle, role: WindowRole) {
     if app.get_webview_window("main").is_some() {
         return;
     }
     let builder = with_backdrop(
         "main",
-        base_builder(app, "main", "index.html", first)
+        base_builder(app, "main", "index.html", role)
             .inner_size(MAIN_W.0, MAIN_W.1)
             .min_inner_size(990.0, 670.0)
             .resizable(true),
@@ -158,13 +171,13 @@ fn create_main_window(app: &AppHandle, first: bool) {
     build_window(builder, "main");
 }
 
-fn create_mini_window(app: &AppHandle, first: bool) {
+fn create_mini_window(app: &AppHandle, role: WindowRole) {
     if app.get_webview_window("mini").is_some() {
         return;
     }
     let builder = with_backdrop(
         "mini",
-        base_builder(app, "mini", "index.html", first)
+        base_builder(app, "mini", "index.html", role)
             .inner_size(MINI_W.0, MINI_W.1)
             .resizable(false)
             .maximizable(false)
@@ -237,9 +250,9 @@ async fn show_main(app: AppHandle) {
     // "Failed to unregister class Chrome_WidgetWin_0" 这类收尾噪音。
     // 主窗先建，并带上"第一个窗口"标记（课表定位到本周，见 FIRST_WINDOW_SCRIPT）；
     // 迷你窗随后预建并保持隐藏。
-    create_window(&app, "main", true);
+    create_window(&app, "main", WindowRole::First);
     show_window(&app, "main");
-    create_window(&app, "mini", false);
+    create_window(&app, "mini", WindowRole::Precreated);
     if let Some(w) = app.get_webview_window("login") {
         let _ = w.close();
     }
@@ -267,7 +280,7 @@ async fn enter_mini(app: AppHandle) {
     let Some(main) = app.get_webview_window("main") else {
         return;
     };
-    create_mini_window(&app, false);
+    create_mini_window(&app, WindowRole::Visible);
     if let Some(mini) = app.get_webview_window("mini") {
         if let Some(pos) = mini_position(&app) {
             let _ = mini.set_position(pos);
@@ -287,7 +300,7 @@ async fn enter_mini(app: AppHandle) {
 
 #[tauri::command]
 async fn exit_mini(app: AppHandle) {
-    create_main_window(&app, false);
+    create_main_window(&app, WindowRole::Visible);
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
@@ -532,9 +545,9 @@ fn initial_window(app: &AppHandle) {
     } else {
         ("main", "mini")
     };
-    create_window(app, active, true);
+    create_window(app, active, WindowRole::First);
     show_window(app, active);
-    create_window(app, hidden, false);
+    create_window(app, hidden, WindowRole::Precreated);
 }
 
 pub fn run() {
@@ -578,7 +591,7 @@ pub fn run() {
             set_window_memory,
             // 更新
             update::check_update,
-            update::open_url,
+            update::download_and_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,4 +1,4 @@
 {
-  "version": "0.5.1",
-  "releaseNotes": "修复了一些已知问题"
+  "version": "0.5.2",
+  "releaseNotes": "更新静默安装"
 }

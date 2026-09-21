@@ -1,6 +1,6 @@
 [package]
 name = "fzu_desktop"
-version = "0.5.1"
+version = "0.5.2"
 description = "福UU（第三方）"
 authors = ["Jelosy"]
 edition = "2021"
@@ -28,7 +28,6 @@ chrono = "0.4"
 regex = "1"
 url = "2"
 anyhow = "1.0"
-opener = "0.7"
 keyring = "4.2.0"
 
 # 判断是否为 Windows 11（Mica 云母的可用性由系统 build 号决定）

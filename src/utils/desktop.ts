@@ -103,10 +103,19 @@ export const electronAPI = {
       }
     }
   },
-  // 简化更新：不再后台下载，改为打开浏览器下载页（完整自动更新留待 tauri-plugin-updater）
-  downloadUpdate: (url: string) => {
-    void invoke('open_url', { url })
+  // 应用内下载更新包并静默安装：失败时 reject，由调用方把原因显示出来
+  downloadAndInstall: (url: string) => invoke<void>('download_and_install', { url }),
+  onUpdateProgress: (callback: (data: { percent: number }) => void) => {
+    const win = getCurrentWindow()
+    void win.listen<{ percent: number }>('update-progress', (event) => callback(event.payload))
   },
-  onUpdateProgress: () => {},
-  onUpdateDone: () => {},
+  onUpdateDone: (
+    callback: (data: { status: 'completed' | 'failed'; reason?: string; path: string }) => void,
+  ) => {
+    const win = getCurrentWindow()
+    void win.listen<{ status: 'completed' | 'failed'; reason?: string; path: string }>(
+      'update-done',
+      (event) => callback(event.payload),
+    )
+  },
 }

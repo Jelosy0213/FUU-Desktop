@@ -104,12 +104,19 @@ export async function checkForUpdate(manual = false) {
   }
 }
 
-/** 点击"更新"：打开浏览器下载页（Tauri 简化版，完整自动更新留待 tauri-plugin-updater） */
+/** 点击"更新"：在应用内下载并静默安装，安装完成后由安装器重新拉起应用 */
 export function startDownload() {
   const info = updateState.info
   if (!info?.downloadUrl || updateState.downloading) return
-  window.electronAPI?.downloadUpdate(info.downloadUrl)
-  updateState.visible = false
+  updateState.downloading = true
+  updateState.progress = 0
+  updateState.error = ''
+  // 不关闭弹窗：下载进度、失败原因都要在这里显示。
+  // 失败时把 Rust 给出的原因原样显示出来（例如 release 里缺对应安装包会返回 404）
+  void window.electronAPI?.downloadAndInstall(info.downloadUrl).catch((error: unknown) => {
+    updateState.downloading = false
+    updateState.error = error instanceof Error ? error.message : String(error)
+  })
 }
 
 /**
@@ -140,7 +147,7 @@ if (typeof window !== 'undefined' && window.electronAPI) {
       updateState.downloadPath = path || ''
       updateState.progress = 100
     } else {
-      updateState.error = reason === 'interrupted' ? '下载中断，请检查网络后重试' : '下载失败，请重试'
+      updateState.error = reason || '下载失败，请重试'
     }
   })
 }
